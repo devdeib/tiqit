@@ -339,8 +339,14 @@ BEGIN
 
   UPDATE ticket_types SET available = 3 WHERE id = v_type_id;
 
-  INSERT INTO reservations (customer_id, event_id, expires_at)
-  VALUES (v_guest_id, v_event_id, NOW() - INTERVAL '1 minute')
+  -- Hold inventory while still valid, then backdate expires_at for the cron test
+  INSERT INTO reservations (customer_id, event_id, expires_at, created_at)
+  VALUES (
+    v_guest_id,
+    v_event_id,
+    NOW() + INTERVAL '15 minutes',
+    NOW() - INTERVAL '10 minutes'
+  )
   RETURNING id INTO v_res_id;
 
   INSERT INTO reservation_items (reservation_id, ticket_type_id, quantity)
@@ -348,6 +354,11 @@ BEGIN
 
   PERFORM test_service_role();
   PERFORM atomic_decrement_inventory(v_res_id);
+
+  UPDATE reservations
+  SET expires_at = NOW() - INTERVAL '1 minute'
+  WHERE id = v_res_id;
+
   PERFORM test_clear_jwt();
 
   INSERT INTO test_ctx (key, value) VALUES ('reservation_expire', v_res_id)
@@ -559,6 +570,9 @@ BEGIN
   INSERT INTO reservations (customer_id, event_id, expires_at, status)
   VALUES (v_guest_id, v_event_id, NOW() + INTERVAL '1 hour', 'converted')
   RETURNING id INTO v_res_id;
+
+  INSERT INTO reservation_items (reservation_id, ticket_type_id, quantity)
+  VALUES (v_res_id, v_type_id, 1);
 
   INSERT INTO orders (
     customer_id, reservation_id, event_id, total_amount, status, tickets_issued, idempotency_key
@@ -1116,17 +1130,24 @@ DECLARE
   v_guest_id UUID;
   v_event_id UUID;
   v_type_id UUID;
+  v_res_id UUID;
 BEGIN
   SELECT value INTO v_guest_id FROM test_ctx WHERE key = 'guest_id';
   SELECT value INTO v_event_id FROM test_ctx WHERE key = 'event_id';
   SELECT value INTO v_type_id FROM test_ctx WHERE key = 'ticket_type_id';
 
+  INSERT INTO reservations (customer_id, event_id, expires_at, status)
+  VALUES (v_guest_id, v_event_id, NOW() + INTERVAL '1 hour', 'converted')
+  RETURNING id INTO v_res_id;
+
+  INSERT INTO reservation_items (reservation_id, ticket_type_id, quantity)
+  VALUES (v_res_id, v_type_id, 1);
+
   INSERT INTO orders (
     customer_id, reservation_id, event_id, total_amount, status, idempotency_key
-  )
-  SELECT v_guest_id, r.id, v_event_id, 100.00, 'confirmed', 'test-issuance-cap-001'
-  FROM reservations r WHERE r.event_id = v_event_id LIMIT 1
-  RETURNING id INTO v_order_id;
+  ) VALUES (
+    v_guest_id, v_res_id, v_event_id, 100.00, 'confirmed', 'test-issuance-cap-001'
+  ) RETURNING id INTO v_order_id;
 
   INSERT INTO order_items (order_id, ticket_type_id, quantity, unit_price, line_total)
   VALUES (v_order_id, v_type_id, 1, 100.00, 100.00);
