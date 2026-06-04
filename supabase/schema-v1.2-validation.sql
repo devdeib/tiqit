@@ -156,7 +156,7 @@ $t$;
 -- Expected Result: test_results.passed = true for 01_event_creation (status = draft)
 
 -- ============================================================
--- 2. EVENT APPROVAL (admin only)
+-- 2. EVENT PUBLISH (organizer — no admin approval)
 -- ============================================================
 
 -- Setup SQL
@@ -169,49 +169,51 @@ BEGIN
 END;
 $t$;
 
--- Test SQL (organizer must fail)
+-- Test SQL (organizer publishes without approved_by)
 DO $t$
 DECLARE
   v_event_id UUID;
   v_org_auth UUID;
-  v_blocked BOOLEAN := FALSE;
+  v_status event_status;
 BEGIN
   SELECT value INTO v_event_id FROM test_ctx WHERE key = 'event_id';
   SELECT value INTO v_org_auth FROM test_ctx WHERE key = 'organizer_auth';
   PERFORM test_set_jwt(v_org_auth, 'authenticated');
-  BEGIN
-    UPDATE events
-    SET status = 'active', approved_by = (SELECT value FROM test_ctx WHERE key = 'admin_id'),
-        approved_at = NOW()
-    WHERE id = v_event_id;
-  EXCEPTION WHEN OTHERS THEN
-    v_blocked := SQLERRM LIKE '%only admin%';
-  END;
-  PERFORM test_record('02a_event_approval_organizer_blocked', v_blocked, 'organizer activate blocked');
+  UPDATE events SET status = 'active' WHERE id = v_event_id;
+  SELECT status INTO v_status FROM events WHERE id = v_event_id;
+  PERFORM test_record(
+    '02a_organizer_publish_success',
+    v_status = 'active',
+    'status=' || v_status::TEXT
+  );
   PERFORM test_clear_jwt();
 END;
 $t$;
 
--- Test SQL (admin must succeed)
+-- Test SQL (organizer cannot set approved_by when publishing)
 DO $t$
 DECLARE
   v_event_id UUID;
-  v_admin_auth UUID;
+  v_org_auth UUID;
   v_admin_id UUID;
-  v_status event_status;
+  v_blocked BOOLEAN := FALSE;
 BEGIN
-  SELECT value INTO v_event_id FROM test_ctx WHERE key = 'event_id';
-  SELECT value INTO v_admin_auth FROM test_ctx WHERE key = 'admin_auth';
+  SELECT value INTO v_event_id FROM test_ctx WHERE key = 'event_draft_2';
+  SELECT value INTO v_org_auth FROM test_ctx WHERE key = 'organizer_auth';
   SELECT value INTO v_admin_id FROM test_ctx WHERE key = 'admin_id';
-  PERFORM test_set_jwt(v_admin_auth, 'authenticated');
-  UPDATE events
-  SET status = 'active', approved_by = v_admin_id, approved_at = NOW()
-  WHERE id = v_event_id;
-  SELECT status INTO v_status FROM events WHERE id = v_event_id;
+  UPDATE events SET status = 'pending_approval' WHERE id = v_event_id;
+  PERFORM test_set_jwt(v_org_auth, 'authenticated');
+  BEGIN
+    UPDATE events
+    SET status = 'active', approved_by = v_admin_id, approved_at = NOW()
+    WHERE id = v_event_id;
+  EXCEPTION WHEN OTHERS THEN
+    v_blocked := SQLERRM LIKE '%approved_by%' OR SQLERRM LIKE '%approved_at%';
+  END;
   PERFORM test_record(
-    '02b_event_approval_admin_success',
-    v_status = 'active',
-    'status=' || v_status::TEXT
+    '02b_organizer_publish_rejects_approval_fields',
+    v_blocked,
+    'organizer must not set approval fields'
   );
   PERFORM test_clear_jwt();
 END;

@@ -173,6 +173,92 @@ export interface Database {
         Update: Partial<Database["public"]["Tables"]["ticket_types"]["Insert"]>;
         Relationships: [];
       };
+      reservation_items: {
+        Row: {
+          id: string;
+          reservation_id: string;
+          ticket_type_id: string;
+          quantity: number;
+        };
+        Insert: {
+          id?: string;
+          reservation_id: string;
+          ticket_type_id: string;
+          quantity: number;
+        };
+        Update: Partial<Database["public"]["Tables"]["reservation_items"]["Insert"]>;
+        Relationships: [];
+      };
+      order_items: {
+        Row: {
+          id: string;
+          order_id: string;
+          ticket_type_id: string;
+          quantity: number;
+          unit_price: number;
+          line_total: number;
+        };
+        Insert: {
+          id?: string;
+          order_id: string;
+          ticket_type_id: string;
+          quantity: number;
+          unit_price: number;
+          line_total: number;
+        };
+        Update: Partial<Database["public"]["Tables"]["order_items"]["Insert"]>;
+        Relationships: [];
+      };
+      payment_webhook_events: {
+        Row: {
+          id: string;
+          provider: string;
+          provider_event_id: string;
+          provider_payment_id: string | null;
+          order_id: string | null;
+          payload_hash: string;
+          processed_at: string;
+        };
+        Insert: {
+          id?: string;
+          provider?: string;
+          provider_event_id: string;
+          provider_payment_id?: string | null;
+          order_id?: string | null;
+          payload_hash: string;
+          processed_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["payment_webhook_events"]["Insert"]>;
+        Relationships: [];
+      };
+      ledger: {
+        Row: {
+          id: number;
+          event_type: LedgerEventType;
+          amount: number;
+          reference_id: string;
+          reference_table: string;
+          organizer_id: string | null;
+          customer_id: string | null;
+          event_id: string | null;
+          notes: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: number;
+          event_type: LedgerEventType;
+          amount: number;
+          reference_id: string;
+          reference_table: string;
+          organizer_id?: string | null;
+          customer_id?: string | null;
+          event_id?: string | null;
+          notes?: string | null;
+          created_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["ledger"]["Insert"]>;
+        Relationships: [];
+      };
       reservations: {
         Row: {
           id: string;
@@ -379,6 +465,17 @@ export interface Database {
       expire_stale_reservations: {
         Args: Record<string, never>;
         Returns: number;
+      };
+      fulfill_payment_webhook: {
+        Args: {
+          p_provider_payment_id: string;
+          p_provider_event_id: string;
+          p_payload_hash: string;
+          p_raw_payload: Json;
+          p_tickets: Json;
+          p_amount?: number | null;
+        };
+        Returns: Json;
       };
     };
     Enums: {

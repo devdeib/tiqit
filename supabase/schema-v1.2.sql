@@ -510,23 +510,27 @@ BEGIN
 
   IF OLD.status = NEW.status THEN RETURN NEW; END IF;
 
-  IF OLD.status = 'draft' AND NEW.status NOT IN ('draft', 'pending_approval', 'cancelled') THEN
+  IF OLD.status = 'draft' AND NEW.status NOT IN ('draft', 'pending_approval', 'active', 'cancelled') THEN
     RAISE EXCEPTION 'Invalid transition from draft';
   END IF;
 
-  IF NEW.status = 'active' AND (TG_OP = 'INSERT' OR OLD.status IS DISTINCT FROM 'active') THEN
-    IF current_user_role() IS DISTINCT FROM 'admin' THEN
-      RAISE EXCEPTION 'only admin can activate events';
+  IF NEW.status = 'active' AND OLD.status IS DISTINCT FROM 'active' THEN
+    IF is_service_role() THEN
+      RETURN NEW;
     END IF;
-    IF NEW.approved_by IS NULL OR NEW.approved_at IS NULL THEN
-      RAISE EXCEPTION 'active requires approved_by and approved_at';
+
+    IF current_user_role() = 'organizer' AND NEW.organizer_id = current_user_id() THEN
+      IF NEW.approved_by IS NOT NULL OR NEW.approved_at IS NOT NULL THEN
+        RAISE EXCEPTION 'organizer-published events must not set approved_by or approved_at';
+      END IF;
+      RETURN NEW;
     END IF;
-    IF NOT EXISTS (
-      SELECT 1 FROM public.users u
-      WHERE u.id = NEW.approved_by AND u.role = 'admin' AND u.is_active = TRUE
-    ) THEN
-      RAISE EXCEPTION 'approved_by must be an active admin user';
+
+    IF current_user_role() = 'admin' THEN
+      RETURN NEW;
     END IF;
+
+    RAISE EXCEPTION 'only the owning organizer, admin, or service role can activate events';
   END IF;
 
   IF OLD.status IN ('completed', 'cancelled') AND NEW.status <> OLD.status THEN

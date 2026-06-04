@@ -31,7 +31,8 @@ export class AppError extends Error {
     this.code = options.code;
     this.status = options.status ?? statusForCode(options.code);
     this.details = options.details;
-    this.expose = options.expose ?? options.status !== undefined && options.status < 500;
+    this.expose =
+      options.expose ?? (options.status !== undefined && options.status < 500);
   }
 
   toJSON() {

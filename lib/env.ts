@@ -1,5 +1,20 @@
 import { z } from "zod";
 
+/** .env often sets `KEY=` — treat blank as unset so `.optional()` works. */
+function optionalEnvString(minLength = 1) {
+  return z.preprocess(
+    (val) => (typeof val === "string" && val.trim() === "" ? undefined : val),
+    z.string().min(minLength).optional(),
+  );
+}
+
+function optionalEnvUrl() {
+  return z.preprocess(
+    (val) => (typeof val === "string" && val.trim() === "" ? undefined : val),
+    z.string().url().optional(),
+  );
+}
+
 const serverEnvSchema = z.object({
   NODE_ENV: z
     .enum(["development", "test", "production"])
@@ -7,10 +22,14 @@ const serverEnvSchema = z.object({
   NEXT_PUBLIC_SUPABASE_URL: z.string().url(),
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
-  HMAC_SECRET_V1: z.string().min(16).optional(),
-  SHAM_CASH_API_KEY: z.string().min(1).optional(),
-  SHAM_CASH_WEBHOOK_SECRET: z.string().min(1).optional(),
-  APP_URL: z.string().url().optional(),
+  HMAC_SECRET_V1: optionalEnvString(16),
+  SHAM_CASH_API_KEY: optionalEnvString(1),
+  SHAM_CASH_WEBHOOK_SECRET: optionalEnvString(1),
+  SHAM_CASH_MOCK: z.preprocess(
+    (val) => (typeof val === "string" && val.trim() === "" ? undefined : val),
+    z.enum(["true", "false"]).optional(),
+  ),
+  APP_URL: optionalEnvUrl(),
 });
 
 const clientEnvSchema = z.object({
