@@ -1,6 +1,6 @@
 import "server-only";
 
-import { getAppEnvironment, getServerEnv } from "@/lib/env";
+import { getServerEnv } from "@/lib/env";
 import { LiveShamCashAdapter } from "@/services/sham-cash/live-adapter";
 import { MockShamCashAdapter } from "@/services/sham-cash/mock-adapter";
 import type {
@@ -20,26 +20,16 @@ export type {
 
 let cachedAdapter: ShamCashPaymentAdapter | null = null;
 
+/**
+ * Phase 1: mock payments everywhere by default.
+ * Live Sham Cash only when SHAM_CASH_FORCE_LIVE=true and SHAM_CASH_API_KEY is set.
+ * Having an API key in env does NOT enable live mode.
+ */
 export function resolveShamCashMode(): PaymentProviderMode {
   if (process.env.SHAM_CASH_MOCK === "true") return "mock";
+  if (process.env.SHAM_CASH_FORCE_LIVE !== "true") return "mock";
 
-  const appEnv = getAppEnvironment();
-
-  // Staging/local use mock until live-adapter.ts implements the real API.
-  // Set SHAM_CASH_FORCE_LIVE=true (and API key) on staging to test live when ready.
-  if (appEnv === "development" || appEnv === "staging") {
-    if (process.env.SHAM_CASH_FORCE_LIVE === "true" && getServerEnv().SHAM_CASH_API_KEY) {
-      return "live";
-    }
-    return "mock";
-  }
-
-  const env = getServerEnv();
-  if (appEnv === "production") {
-    return env.SHAM_CASH_API_KEY ? "live" : "mock";
-  }
-
-  return env.SHAM_CASH_API_KEY ? "live" : "mock";
+  return getServerEnv().SHAM_CASH_API_KEY ? "live" : "mock";
 }
 
 export function getShamCashAdapter(): ShamCashPaymentAdapter {

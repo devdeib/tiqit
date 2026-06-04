@@ -31,6 +31,10 @@ const serverEnvSchema = z.object({
     (val) => (typeof val === "string" && val.trim() === "" ? undefined : val),
     z.enum(["true", "false"]).optional(),
   ),
+  SHAM_CASH_FORCE_LIVE: z.preprocess(
+    (val) => (typeof val === "string" && val.trim() === "" ? undefined : val),
+    z.enum(["true", "false"]).optional(),
+  ),
   SHAM_CASH_API_BASE_URL: optionalEnvUrl(),
   APP_URL: optionalEnvUrl(),
   APP_ENV: z.preprocess(

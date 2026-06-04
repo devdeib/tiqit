@@ -41,7 +41,7 @@ edge-functions/   # Supabase Edge Functions (Phase 1)
 
 ## Phase 1 — Guest checkout (mock payments)
 
-Requires Phase 0 plus `HMAC_SECRET_V1` (32+ byte secret) in `.env.local`. For local dev without Sham Cash, set `SHAM_CASH_MOCK=true` or leave `SHAM_CASH_API_KEY` unset.
+Requires Phase 0 plus `HMAC_SECRET_V1` (32+ byte secret) in `.env.local`. Payments use **mock Sham Cash** by default; live mode requires `SHAM_CASH_FORCE_LIVE=true` (not needed for Phase 1).
 
 ### Flow
 

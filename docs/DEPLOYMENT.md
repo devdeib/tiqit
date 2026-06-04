@@ -54,15 +54,16 @@ Set `APP_ENV` explicitly when Vercel’s defaults are not enough (`APP_ENV=stagi
 
 | Variable | Exposure | Description |
 |----------|----------|-------------|
-| `SHAM_CASH_MOCK` | Server | `true` → mock adapter (local/staging). **Must be `false` or unset in production** |
-| `SHAM_CASH_API_KEY` | **Secret** | Live adapter; required in production |
+| `SHAM_CASH_MOCK` | Server | `true` → mock adapter (optional; mock is already the default) |
+| `SHAM_CASH_FORCE_LIVE` | Server | `true` + `SHAM_CASH_API_KEY` → live adapter (Phase 2+; not for Phase 1) |
+| `SHAM_CASH_API_KEY` | **Secret** | Ignored unless `SHAM_CASH_FORCE_LIVE=true` |
 | `SHAM_CASH_WEBHOOK_SECRET` | **Secret** | Optional — only if Sham Cash provides signed webhooks (uncommon) |
 | `SHAM_CASH_API_BASE_URL` | Server | Live API base (implement in `live-adapter.ts`) |
 
 **Adapter selection** (`services/sham-cash/`):
 
 - `mock` — `MockShamCashAdapter`: mock pay page + relaxed webhook verify on dev/staging
-- `live` — `LiveShamCashAdapter`: **production only** (when `SHAM_CASH_API_KEY` is set). Staging uses mock by default until `SHAM_CASH_FORCE_LIVE=true` and live API is implemented.
+- `live` — `LiveShamCashAdapter`: only when `SHAM_CASH_FORCE_LIVE=true` and `SHAM_CASH_API_KEY` is set (not implemented for Phase 1).
 
 ### Environment label
 
@@ -134,7 +135,8 @@ Without `SHAM_CASH_WEBHOOK_SECRET`, that route returns **503** (by design).
 |-------|---------|------------|
 | Supabase project | Staging | Production |
 | `APP_ENV` | `staging` (optional) | `production` |
-| `SHAM_CASH_MOCK` | `true` OK | **must not be `true`** |
+| `SHAM_CASH_MOCK` | Optional | Optional (mock is default) |
+| `SHAM_CASH_FORCE_LIVE` | **must be unset/false** | **must be unset/false** until live adapter ships |
 | `SHAM_CASH_WEBHOOK_SECRET` | Optional | Optional (only if provider sends webhooks) |
 | `HMAC_SECRET_V1` | Required for E2E | **Required** |
 | `ALLOW_DEV_PAYMENT` | Optional | **false / unset** |

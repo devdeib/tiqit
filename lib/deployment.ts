@@ -56,19 +56,20 @@ export function validateDeploymentEnv(): DeploymentValidation {
   }
 
   if (appEnv === "production") {
-    if (process.env.SHAM_CASH_MOCK === "true") {
-      errors.push("SHAM_CASH_MOCK must not be true in production");
-    }
-    if (!env.SHAM_CASH_API_KEY) {
-      errors.push("SHAM_CASH_API_KEY is required in production (use live payment adapter)");
-    }
     if (resolveShamCashMode() === "live" && !isShamCashWebhooksConfigured()) {
       warnings.push(
-        "Sham Cash API-key-only mode: no webhook secret — orders confirm via provider API polling (implement in live-adapter.ts); /api/webhooks/sham-cash stays disabled",
+        "Sham Cash live mode without webhook secret — implement API polling in live-adapter.ts or set SHAM_CASH_WEBHOOK_SECRET",
+      );
+    }
+    if (resolveShamCashMode() === "mock" && env.SHAM_CASH_API_KEY) {
+      warnings.push(
+        "SHAM_CASH_API_KEY is set but ignored (mock mode). Remove from Vercel or set SHAM_CASH_FORCE_LIVE=true when ready for live payments",
       );
     }
     if (process.env.ALLOW_DEV_PAYMENT === "true") {
-      errors.push("ALLOW_DEV_PAYMENT must not be enabled in production");
+      warnings.push(
+        "ALLOW_DEV_PAYMENT is enabled on production — not required for mock checkout; disable when using live Sham Cash",
+      );
     }
   }
 
@@ -105,10 +106,6 @@ export function validateDeploymentEnv(): DeploymentValidation {
 export function assertWebhookReadyForDeployment(): void {
   const appEnv = getAppEnvironment();
   const env = getServerEnv();
-
-  if (process.env.SHAM_CASH_MOCK === "true" && appEnv === "production") {
-    throw new Error("SHAM_CASH_MOCK must not be enabled in production");
-  }
 
   if (!isShamCashWebhooksConfigured()) {
     throw new Error(
