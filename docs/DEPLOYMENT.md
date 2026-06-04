@@ -56,7 +56,7 @@ Set `APP_ENV` explicitly when Vercel’s defaults are not enough (`APP_ENV=stagi
 |----------|----------|-------------|
 | `SHAM_CASH_MOCK` | Server | `true` → mock adapter (local/staging). **Must be `false` or unset in production** |
 | `SHAM_CASH_API_KEY` | **Secret** | Live adapter; required in production |
-| `SHAM_CASH_WEBHOOK_SECRET` | **Secret** | Webhook HMAC; required in production |
+| `SHAM_CASH_WEBHOOK_SECRET` | **Secret** | Optional — only if Sham Cash provides signed webhooks (uncommon) |
 | `SHAM_CASH_API_BASE_URL` | Server | Live API base (implement in `live-adapter.ts`) |
 
 **Adapter selection** (`services/sham-cash/`):
@@ -103,28 +103,30 @@ curl -sS https://YOUR_APP_URL/api/ready
 
 `/api/ready` includes `deployment.errors` / `deployment.warnings` and `deployment.paymentProvider` (`mock` | `live`).
 
-## Webhook (production)
+## Payment confirmation (Sham Cash)
 
-**Endpoint (canonical):**
+Most Sham Cash integrations provide **only an API key** (no webhook URL or signing secret).
+
+| Mode | When | How orders become `confirmed` |
+|------|------|--------------------------------|
+| `mock` | `SHAM_CASH_MOCK=true` or no API key on staging | `/api/dev/simulate-payment` or mock pay page |
+| `api_poll` | Production + `SHAM_CASH_API_KEY`, no webhook secret | Poll Sham Cash with the API key after redirect (implement in `live-adapter.ts`; wire from checkout status / return URL) |
+| `webhook` | `SHAM_CASH_WEBHOOK_SECRET` set | `POST /api/webhooks/sham-cash` with `x-sham-cash-signature` |
+
+`/api/ready` reports `deployment.paymentConfirmation` (`mock` \| `api_poll` \| `webhook`).
+
+### Optional webhooks
+
+Only if Sham Cash gives you a callback URL and signing secret:
 
 ```http
 POST https://YOUR_APP_URL/api/webhooks/sham-cash
-Content-Type: application/json
 x-sham-cash-signature: <sha256 hex of rawBody + SHAM_CASH_WEBHOOK_SECRET>
 ```
 
-**Readiness**
+Without `SHAM_CASH_WEBHOOK_SECRET`, that route returns **503** (by design).
 
-- Production rejects requests if `SHAM_CASH_WEBHOOK_SECRET` is missing or `SHAM_CASH_MOCK=true`.
-- Signature verified with constant-time compare (`services/sham-cash/signature.ts`).
-- `order_id` in the body is validated against the payment row (not trusted alone).
-- `GET` returns `405` with endpoint metadata (connectivity probes only).
-
-**Sham Cash dashboard**
-
-Register the production URL above. Do not point production webhooks at Preview URLs unless testing with staging secrets.
-
-**Optional:** Supabase Edge `edge-functions/sham-cash-webhook` proxies to `APP_URL` — prefer the Vercel route when the app is hosted on Vercel.
+**Optional:** Supabase Edge `edge-functions/sham-cash-webhook` proxies to the Next.js route — only useful when webhooks are enabled.
 
 ## Staging vs production checklist
 
@@ -133,7 +135,7 @@ Register the production URL above. Do not point production webhooks at Preview U
 | Supabase project | Staging | Production |
 | `APP_ENV` | `staging` (optional) | `production` |
 | `SHAM_CASH_MOCK` | `true` OK | **must not be `true`** |
-| `SHAM_CASH_WEBHOOK_SECRET` | Recommended | **Required** |
+| `SHAM_CASH_WEBHOOK_SECRET` | Optional | Optional (only if provider sends webhooks) |
 | `HMAC_SECRET_V1` | Required for E2E | **Required** |
 | `ALLOW_DEV_PAYMENT` | Optional | **false / unset** |
 | Demo seed SQL | OK | **Do not run** |

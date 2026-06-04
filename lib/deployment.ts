@@ -5,9 +5,13 @@ import {
   getAppEnvironment,
   getServerEnv,
   type AppEnvironment,
-  type ServerEnv,
 } from "@/lib/env";
-import { getAppBaseUrl } from "@/lib/app-url";
+import { getAppBaseUrl, getConfiguredAppUrl, isProductionAppUrlMisconfigured } from "@/lib/app-url";
+import {
+  getShamCashConfirmationMode,
+  isShamCashWebhooksConfigured,
+  resolveShamCashMode,
+} from "@/services/sham-cash";
 
 export type DeploymentValidation = {
   appEnv: AppEnvironment;
@@ -39,10 +43,16 @@ export function validateDeploymentEnv(): DeploymentValidation {
     else warnings.push(msg);
   }
 
-  if (!resolvePublicAppUrl(env)) {
+  if (!getAppBaseUrl()) {
     const msg = "APP_URL or VERCEL_URL must be set for payment redirects and webhooks";
     if (appEnv !== "development") errors.push(msg);
     else warnings.push(msg);
+  }
+
+  if (appEnv === "production" && isProductionAppUrlMisconfigured()) {
+    errors.push(
+      "APP_URL is set to localhost in production — update Vercel to your public HTTPS URL (e.g. https://your-app.vercel.app)",
+    );
   }
 
   if (appEnv === "production") {
@@ -52,8 +62,10 @@ export function validateDeploymentEnv(): DeploymentValidation {
     if (!env.SHAM_CASH_API_KEY) {
       errors.push("SHAM_CASH_API_KEY is required in production (use live payment adapter)");
     }
-    if (!env.SHAM_CASH_WEBHOOK_SECRET) {
-      errors.push("SHAM_CASH_WEBHOOK_SECRET is required in production");
+    if (resolveShamCashMode() === "live" && !isShamCashWebhooksConfigured()) {
+      warnings.push(
+        "Sham Cash API-key-only mode: no webhook secret — orders confirm via provider API polling (implement in live-adapter.ts); /api/webhooks/sham-cash stays disabled",
+      );
     }
     if (process.env.ALLOW_DEV_PAYMENT === "true") {
       errors.push("ALLOW_DEV_PAYMENT must not be enabled in production");
@@ -61,9 +73,13 @@ export function validateDeploymentEnv(): DeploymentValidation {
   }
 
   if (appEnv === "staging") {
-    if (!env.SHAM_CASH_WEBHOOK_SECRET && process.env.SHAM_CASH_MOCK !== "true") {
+    if (
+      process.env.SHAM_CASH_FORCE_LIVE === "true" &&
+      env.SHAM_CASH_API_KEY &&
+      !isShamCashWebhooksConfigured()
+    ) {
       warnings.push(
-        "SHAM_CASH_WEBHOOK_SECRET recommended on staging when not using SHAM_CASH_MOCK",
+        "SHAM_CASH_WEBHOOK_SECRET unset — live staging uses API polling, not /api/webhooks/sham-cash",
       );
     }
     if (process.env.ALLOW_DEV_PAYMENT === "true") {
@@ -94,28 +110,29 @@ export function assertWebhookReadyForDeployment(): void {
     throw new Error("SHAM_CASH_MOCK must not be enabled in production");
   }
 
-  const requiresStrictWebhook =
-    appEnv === "production" ||
-    (appEnv === "staging" && process.env.SHAM_CASH_MOCK !== "true");
-
-  if (requiresStrictWebhook && !env.SHAM_CASH_WEBHOOK_SECRET) {
-    throw new Error("SHAM_CASH_WEBHOOK_SECRET is not configured");
+  if (!isShamCashWebhooksConfigured()) {
+    throw new Error(
+      "Sham Cash webhooks are not configured (set SHAM_CASH_WEBHOOK_SECRET only if your provider sends signed callbacks)",
+    );
   }
 }
 
 export function getDeploymentSummary() {
   const validation = validateDeploymentEnv();
   let appUrl: string | null = null;
+  let configuredAppUrl: string | null = null;
   try {
     appUrl = getAppBaseUrl();
+    configuredAppUrl = getConfiguredAppUrl();
   } catch {
     appUrl = null;
   }
-  return { ...validation, appUrl };
-}
+  let paymentConfirmation: ReturnType<typeof getShamCashConfirmationMode> = "mock";
+  try {
+    paymentConfirmation = getShamCashConfirmationMode();
+  } catch {
+    paymentConfirmation = "mock";
+  }
 
-function resolvePublicAppUrl(env: ServerEnv): string | null {
-  if (env.APP_URL?.trim()) return env.APP_URL.trim();
-  if (process.env.VERCEL_URL?.trim()) return `https://${process.env.VERCEL_URL.trim()}`;
-  return null;
+  return { ...validation, appUrl, configuredAppUrl, paymentConfirmation };
 }

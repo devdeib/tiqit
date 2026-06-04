@@ -2,10 +2,10 @@ import { NextResponse } from "next/server";
 import { withApiHandler } from "@/lib/api/handler";
 import { assertWebhookReadyForDeployment } from "@/lib/deployment";
 import { AppError } from "@/lib/errors";
-import { getAppEnvironment } from "@/lib/env";
 import { logWebhookEvent } from "@/lib/webhook-log";
 import { RATE_LIMITS } from "@/lib/rate-limit";
 import {
+  isShamCashWebhooksConfigured,
   parseShamCashWebhookPayload,
   verifyShamCashWebhookSignature,
 } from "@/services/sham-cash";
@@ -29,10 +29,14 @@ export async function POST(request: Request) {
   const started = Date.now();
   return withApiHandler(
     async (ctx) => {
-      const appEnv = getAppEnvironment();
-      if (appEnv === "production" || (appEnv === "staging" && process.env.SHAM_CASH_MOCK !== "true")) {
-        assertWebhookReadyForDeployment();
+      if (!isShamCashWebhooksConfigured()) {
+        throw new AppError(
+          "Sham Cash webhooks are not enabled (provider is API-key-only). Payment confirmation uses provider API polling instead.",
+          { code: "CONFIG", status: 503, expose: true },
+        );
       }
+
+      assertWebhookReadyForDeployment();
 
       const rawBody = await request.text();
       logWebhookEvent({

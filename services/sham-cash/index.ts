@@ -54,6 +54,20 @@ export function isShamCashMockMode(): boolean {
   return getShamCashAdapter().mode === "mock";
 }
 
+/** True when an optional webhook signing secret is configured (most Sham Cash setups are API-key-only). */
+export function isShamCashWebhooksConfigured(): boolean {
+  return Boolean(getServerEnv().SHAM_CASH_WEBHOOK_SECRET);
+}
+
+/** How paid orders are confirmed after checkout. */
+export type ShamCashConfirmationMode = "mock" | "webhook" | "api_poll";
+
+export function getShamCashConfirmationMode(): ShamCashConfirmationMode {
+  if (resolveShamCashMode() === "mock") return "mock";
+  if (isShamCashWebhooksConfigured()) return "webhook";
+  return "api_poll";
+}
+
 export async function createShamCashSession(
   input: ShamCashSessionInput,
 ): Promise<ShamCashSessionResult> {

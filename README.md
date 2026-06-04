@@ -61,7 +61,7 @@ Requires Phase 0 plus `HMAC_SECRET_V1` (32+ byte secret) in `.env.local`. For lo
 | `GET` | `/api/reservations/[id]` | Reservation status |
 | `POST` | `/api/checkout` | Create order + payment redirect |
 | `GET` | `/api/checkout/[orderId]/status` | Poll payment / tickets |
-| `POST` | `/api/webhooks/sham-cash` | Payment webhook (production) |
+| `POST` | `/api/webhooks/sham-cash` | Optional signed webhooks (only if `SHAM_CASH_WEBHOOK_SECRET` set) |
 | `POST` | `/api/dev/simulate-payment` | Dev-only mock fulfillment |
 | `POST` | `/api/orders/lookup` | Confirmation (orderId + phone) |
 

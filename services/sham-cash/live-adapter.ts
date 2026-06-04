@@ -8,8 +8,9 @@ import type {
 } from "@/services/sham-cash/types";
 
 /**
- * Live Sham Cash integration — implement API calls in createSession when credentials exist.
- * Configure SHAM_CASH_API_BASE_URL and SHAM_CASH_API_KEY for production/staging live mode.
+ * Live Sham Cash integration (API-key-only provider).
+ * Implement createSession (checkout redirect) and payment status polling with SHAM_CASH_API_KEY.
+ * Webhooks are optional — set SHAM_CASH_WEBHOOK_SECRET only if Sham Cash sends signed callbacks.
  */
 export class LiveShamCashAdapter implements ShamCashPaymentAdapter {
   readonly provider = "sham_cash" as const;

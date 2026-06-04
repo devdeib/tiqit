@@ -11,7 +11,10 @@ import {
   REQUIRED_SERVER_ENV_KEYS,
 } from "@/lib/env";
 import { logger } from "@/lib/logger";
-import { resolveShamCashMode } from "@/services/sham-cash";
+import {
+  type ShamCashConfirmationMode,
+  resolveShamCashMode,
+} from "@/services/sham-cash";
 import type { Database } from "@/types/database";
 
 export type HealthCheckResult = {
@@ -35,7 +38,9 @@ export type ReadyCheckResult = HealthCheckResult & {
   };
   deployment: DeploymentValidation & {
     paymentProvider: ReturnType<typeof resolveShamCashMode>;
+    paymentConfirmation: ShamCashConfirmationMode;
     appUrl: string | null;
+    configuredAppUrl: string | null;
   };
 };
 
@@ -143,7 +148,9 @@ export async function runReadyCheck(): Promise<ReadyCheckResult> {
   const deployment = {
     ...baseDeployment,
     paymentProvider,
+    paymentConfirmation: summary.paymentConfirmation,
     appUrl: summary.appUrl,
+    configuredAppUrl: summary.configuredAppUrl,
   };
 
   const deployOk = deployment.ok;
