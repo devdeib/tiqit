@@ -1,11 +1,13 @@
 import "server-only";
 
+import { adminSecretConfigured } from "@/lib/admin-auth";
 import {
   getAppEnvironment,
   getServerEnv,
   type AppEnvironment,
   type ServerEnv,
 } from "@/lib/env";
+import { getAppBaseUrl } from "@/lib/app-url";
 
 export type DeploymentValidation = {
   appEnv: AppEnvironment;
@@ -67,6 +69,13 @@ export function validateDeploymentEnv(): DeploymentValidation {
     if (process.env.ALLOW_DEV_PAYMENT === "true") {
       warnings.push("ALLOW_DEV_PAYMENT is enabled on staging — disable before production");
     }
+    if (!adminSecretConfigured()) {
+      warnings.push("ADMIN_API_SECRET recommended for staging emergency admin APIs");
+    }
+  }
+
+  if (appEnv === "production" && !adminSecretConfigured()) {
+    warnings.push("ADMIN_API_SECRET recommended for production incident response");
   }
 
   return {
@@ -78,17 +87,31 @@ export function validateDeploymentEnv(): DeploymentValidation {
 }
 
 export function assertWebhookReadyForDeployment(): void {
-  const { appEnv } = { appEnv: getAppEnvironment() };
+  const appEnv = getAppEnvironment();
   const env = getServerEnv();
 
-  if (appEnv === "production") {
-    if (!env.SHAM_CASH_WEBHOOK_SECRET) {
-      throw new Error("SHAM_CASH_WEBHOOK_SECRET is not configured");
-    }
-    if (process.env.SHAM_CASH_MOCK === "true") {
-      throw new Error("SHAM_CASH_MOCK must not be enabled in production");
-    }
+  if (process.env.SHAM_CASH_MOCK === "true" && appEnv === "production") {
+    throw new Error("SHAM_CASH_MOCK must not be enabled in production");
   }
+
+  const requiresStrictWebhook =
+    appEnv === "production" ||
+    (appEnv === "staging" && process.env.SHAM_CASH_MOCK !== "true");
+
+  if (requiresStrictWebhook && !env.SHAM_CASH_WEBHOOK_SECRET) {
+    throw new Error("SHAM_CASH_WEBHOOK_SECRET is not configured");
+  }
+}
+
+export function getDeploymentSummary() {
+  const validation = validateDeploymentEnv();
+  let appUrl: string | null = null;
+  try {
+    appUrl = getAppBaseUrl();
+  } catch {
+    appUrl = null;
+  }
+  return { ...validation, appUrl };
 }
 
 function resolvePublicAppUrl(env: ServerEnv): string | null {

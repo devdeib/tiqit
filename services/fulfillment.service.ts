@@ -232,7 +232,48 @@ export async function getOrderConfirmation(
   };
 }
 
-async function buildTicketPayloads(orderId: string): Promise<TicketInsertPayload[]> {
+export async function adminIssueTicketsForOrder(orderId: string): Promise<number> {
+  const supabase = createAdminSupabaseClient();
+  const payloads = await buildTicketPayloads(orderId, { skipIssuedGuard: true });
+
+  const { data: order, error: orderError } = await supabase
+    .from("orders")
+    .select("customer_id, event_id")
+    .eq("id", orderId)
+    .single();
+
+  if (orderError || !order) {
+    throw new AppError("Order not found", { code: "NOT_FOUND", status: 404, expose: true });
+  }
+
+  for (const ticket of payloads) {
+    const { error } = await supabase.from("tickets").insert({
+      order_id: orderId,
+      order_item_id: ticket.order_item_id,
+      ticket_type_id: ticket.ticket_type_id,
+      event_id: order.event_id,
+      customer_id: order.customer_id,
+      holder_name: ticket.holder_name,
+      holder_phone: ticket.holder_phone,
+      token: ticket.token,
+      hmac_signature: ticket.hmac_signature,
+      hmac_key_version: ticket.hmac_key_version,
+      status: "confirmed",
+    });
+
+    if (error) {
+      throw new AppError("Failed to issue ticket", { code: "DATABASE", cause: error });
+    }
+  }
+
+  await supabase.from("orders").update({ tickets_issued: true }).eq("id", orderId);
+  return payloads.length;
+}
+
+async function buildTicketPayloads(
+  orderId: string,
+  options?: { skipIssuedGuard?: boolean },
+): Promise<TicketInsertPayload[]> {
   const supabase = createAdminSupabaseClient();
 
   const { data: order } = await supabase
@@ -241,7 +282,11 @@ async function buildTicketPayloads(orderId: string): Promise<TicketInsertPayload
     .eq("id", orderId)
     .single();
 
-  if (!order || order.tickets_issued) {
+  if (!order) {
+    throw new AppError("Order not found", { code: "NOT_FOUND", status: 404, expose: true });
+  }
+
+  if (!options?.skipIssuedGuard && order.tickets_issued) {
     throw new AppError("Tickets already issued or order missing", {
       code: "CONFLICT",
       status: 409,

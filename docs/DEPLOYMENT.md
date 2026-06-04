@@ -62,7 +62,7 @@ Set `APP_ENV` explicitly when Vercel’s defaults are not enough (`APP_ENV=stagi
 **Adapter selection** (`services/sham-cash/`):
 
 - `mock` — `MockShamCashAdapter`: mock pay page + relaxed webhook verify on dev/staging
-- `live` — `LiveShamCashAdapter`: requires API key + webhook secret; `createSession` stub until API mapped
+- `live` — `LiveShamCashAdapter`: **production only** (when `SHAM_CASH_API_KEY` is set). Staging uses mock by default until `SHAM_CASH_FORCE_LIVE=true` and live API is implemented.
 
 ### Environment label
 
@@ -148,3 +148,10 @@ npm run dev
 ```
 
 Use `SHAM_CASH_MOCK=true` and `/checkout/mock-pay` for payments without Sham Cash credentials.
+
+## Staging readiness
+
+1. Set `ADMIN_API_SECRET` (≥16 chars) on Vercel Preview.
+2. Run `APP_URL=https://your-staging-url npm run staging:audit`.
+3. Execute manual flows in **[STAGING-TESTS.md](./STAGING-TESTS.md)**.
+4. Review **[API-AUDIT-STAGING.md](./API-AUDIT-STAGING.md)** for route/auth matrix.

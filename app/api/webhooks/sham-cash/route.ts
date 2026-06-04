@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 import { withApiHandler } from "@/lib/api/handler";
 import { assertWebhookReadyForDeployment } from "@/lib/deployment";
 import { AppError } from "@/lib/errors";
-import { isProductionDeploy } from "@/lib/env";
+import { getAppEnvironment } from "@/lib/env";
+import { logWebhookEvent } from "@/lib/webhook-log";
+import { RATE_LIMITS } from "@/lib/rate-limit";
 import {
   parseShamCashWebhookPayload,
   verifyShamCashWebhookSignature,
@@ -24,44 +26,82 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  return withApiHandler(async () => {
-    if (isProductionDeploy()) {
-      assertWebhookReadyForDeployment();
-    }
+  const started = Date.now();
+  return withApiHandler(
+    async (ctx) => {
+      const appEnv = getAppEnvironment();
+      if (appEnv === "production" || (appEnv === "staging" && process.env.SHAM_CASH_MOCK !== "true")) {
+        assertWebhookReadyForDeployment();
+      }
 
-    const rawBody = await request.text();
-    const signature = request.headers.get("x-sham-cash-signature");
-
-    if (!verifyShamCashWebhookSignature(rawBody, signature)) {
-      throw new AppError("Invalid webhook signature", {
-        code: "UNAUTHORIZED",
-        status: 401,
-        expose: true,
+      const rawBody = await request.text();
+      logWebhookEvent({
+        requestId: ctx.requestId,
+        outcome: "received",
+        bodyBytes: rawBody.length,
       });
-    }
 
-    let webhookInput;
-    try {
-      webhookInput = parseShamCashWebhookPayload(rawBody);
-    } catch {
-      throw new AppError("Invalid webhook JSON payload", {
-        code: "VALIDATION_ERROR",
-        status: 400,
-        expose: true,
-      });
-    }
+      const signature = request.headers.get("x-sham-cash-signature");
 
-    const result = await processPaymentWebhook(
-      {
+      if (!verifyShamCashWebhookSignature(rawBody, signature)) {
+        logWebhookEvent({
+          requestId: ctx.requestId,
+          outcome: "rejected",
+          durationMs: Date.now() - started,
+          errorCode: "invalid_signature",
+        });
+        throw new AppError("Invalid webhook signature", {
+          code: "UNAUTHORIZED",
+          status: 401,
+          expose: true,
+        });
+      }
+
+      logWebhookEvent({ requestId: ctx.requestId, outcome: "verified" });
+
+      let webhookInput;
+      try {
+        webhookInput = parseShamCashWebhookPayload(rawBody);
+      } catch {
+        logWebhookEvent({
+          requestId: ctx.requestId,
+          outcome: "rejected",
+          durationMs: Date.now() - started,
+          errorCode: "invalid_json",
+        });
+        throw new AppError("Invalid webhook JSON payload", {
+          code: "VALIDATION_ERROR",
+          status: 400,
+          expose: true,
+        });
+      }
+
+      const result = await processPaymentWebhook(
+        {
+          providerEventId: webhookInput.providerEventId,
+          providerPaymentId: webhookInput.providerPaymentId,
+          orderId: webhookInput.orderId,
+          status: webhookInput.status,
+          amount: webhookInput.amount,
+        },
+        rawBody,
+      );
+
+      logWebhookEvent({
+        requestId: ctx.requestId,
+        outcome: result.alreadyProcessed ? "duplicate" : "processed",
         providerEventId: webhookInput.providerEventId,
         providerPaymentId: webhookInput.providerPaymentId,
-        orderId: webhookInput.orderId,
-        status: webhookInput.status,
-        amount: webhookInput.amount,
-      },
-      rawBody,
-    );
+        durationMs: Date.now() - started,
+      });
 
-    return NextResponse.json({ received: true, ...result });
-  });
+      return NextResponse.json({ received: true, ...result });
+    },
+    {
+      request,
+      route: "POST /api/webhooks/sham-cash",
+      rateLimit: RATE_LIMITS.webhook,
+      logClientErrors: true,
+    },
+  );
 }

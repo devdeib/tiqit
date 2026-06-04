@@ -24,11 +24,22 @@ export function resolveShamCashMode(): PaymentProviderMode {
   if (process.env.SHAM_CASH_MOCK === "true") return "mock";
 
   const appEnv = getAppEnvironment();
-  if (appEnv === "production") return "live";
+
+  // Staging/local use mock until live-adapter.ts implements the real API.
+  // Set SHAM_CASH_FORCE_LIVE=true (and API key) on staging to test live when ready.
+  if (appEnv === "development" || appEnv === "staging") {
+    if (process.env.SHAM_CASH_FORCE_LIVE === "true" && getServerEnv().SHAM_CASH_API_KEY) {
+      return "live";
+    }
+    return "mock";
+  }
 
   const env = getServerEnv();
-  if (!env.SHAM_CASH_API_KEY) return "mock";
-  return "live";
+  if (appEnv === "production") {
+    return env.SHAM_CASH_API_KEY ? "live" : "mock";
+  }
+
+  return env.SHAM_CASH_API_KEY ? "live" : "mock";
 }
 
 export function getShamCashAdapter(): ShamCashPaymentAdapter {

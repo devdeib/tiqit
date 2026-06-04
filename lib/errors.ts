@@ -35,12 +35,13 @@ export class AppError extends Error {
       options.expose ?? (options.status !== undefined && options.status < 500);
   }
 
-  toJSON() {
+  toJSON(requestId?: string) {
     return {
       error: {
         code: this.code,
         message: this.expose ? this.message : "An unexpected error occurred",
         details: this.expose ? this.details : undefined,
+        ...(requestId ? { requestId } : {}),
       },
     };
   }

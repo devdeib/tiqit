@@ -1,5 +1,9 @@
 import { createClient } from "@supabase/supabase-js";
-import { validateDeploymentEnv, type DeploymentValidation } from "@/lib/deployment";
+import {
+  getDeploymentSummary,
+  validateDeploymentEnv,
+  type DeploymentValidation,
+} from "@/lib/deployment";
 import {
   checkEnvPresence,
   getAppEnvironment,
@@ -12,7 +16,7 @@ import type { Database } from "@/types/database";
 
 export type HealthCheckResult = {
   status: "ok" | "degraded" | "error";
-  app: { running: boolean };
+  app: { running: boolean; appEnv: ReturnType<typeof getAppEnvironment> };
   env: { ok: boolean; missing: string[]; present: string[] };
   supabase: {
     ok: boolean;
@@ -31,6 +35,7 @@ export type ReadyCheckResult = HealthCheckResult & {
   };
   deployment: DeploymentValidation & {
     paymentProvider: ReturnType<typeof resolveShamCashMode>;
+    appUrl: string | null;
   };
 };
 
@@ -75,7 +80,7 @@ export async function runHealthCheck(): Promise<HealthCheckResult> {
 
   return {
     status,
-    app: { running: true },
+    app: { running: true, appEnv: getAppEnvironment() },
     env,
     supabase,
     timestamp: new Date().toISOString(),
@@ -134,7 +139,12 @@ export async function runReadyCheck(): Promise<ReadyCheckResult> {
     );
   }
 
-  const deployment = { ...baseDeployment, paymentProvider };
+  const summary = getDeploymentSummary();
+  const deployment = {
+    ...baseDeployment,
+    paymentProvider,
+    appUrl: summary.appUrl,
+  };
 
   const deployOk = deployment.ok;
   const status =

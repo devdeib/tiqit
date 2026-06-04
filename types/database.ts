@@ -466,6 +466,10 @@ export interface Database {
         Args: Record<string, never>;
         Returns: number;
       };
+      release_reservation_inventory: {
+        Args: { p_reservation_id: string };
+        Returns: undefined;
+      };
       fulfill_payment_webhook: {
         Args: {
           p_provider_payment_id: string;

@@ -69,6 +69,8 @@ Requires Phase 0 plus `HMAC_SECRET_V1` (32+ byte secret) in `.env.local`. For lo
 
 See **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** for Vercel, staging/production env separation, Sham Cash webhook URL, and `/api/ready` deployment checks.
 
+**Staging testing:** [docs/STAGING-TESTS.md](docs/STAGING-TESTS.md) · `npm run staging:audit` · [docs/API-AUDIT-STAGING.md](docs/API-AUDIT-STAGING.md)
+
 - `env/staging.env.example` → Vercel **Preview**
 - `env/production.env.example` → Vercel **Production**
 - Payment provider: `services/sham-cash/` (`mock-adapter` | `live-adapter`)
