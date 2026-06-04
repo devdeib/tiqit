@@ -34,6 +34,11 @@ export default function ConfirmationPage({ params }: Props) {
         if (cancelled) return;
         setStatus(s);
 
+        if (s.paymentStatus === "failed") {
+          setError("Payment failed. Return to checkout and try paying again.");
+          return;
+        }
+
         if (s.ticketsIssued && guestPhone) {
           const { order: o } = await apiPost<{ order: OrderConfirmationResponse }>(
             "/api/orders/lookup",
@@ -43,7 +48,7 @@ export default function ConfirmationPage({ params }: Props) {
           return;
         }
 
-        if (!s.ticketsIssued) {
+        if (!s.ticketsIssued && s.paymentStatus === "pending") {
           window.setTimeout(poll, 2000);
         }
       } catch (err) {
@@ -65,7 +70,7 @@ export default function ConfirmationPage({ params }: Props) {
       {error && <p className="mt-4 text-red-600">{error}</p>}
       {phone === null && <p className="mt-4">Loading…</p>}
       {phone !== null && !error && !status && <p className="mt-4">Checking payment…</p>}
-      {status && !status.ticketsIssued && (
+      {status && !status.ticketsIssued && status.paymentStatus === "pending" && (
         <p className="mt-4 text-neutral-600">Processing payment…</p>
       )}
       {status?.ticketsIssued && !order && !error && (

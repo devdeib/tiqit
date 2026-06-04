@@ -22,7 +22,7 @@ export async function createCheckout(input: {
     .maybeSingle();
 
   if (existing.data) {
-    return resumeCheckout(existing.data.id, input.phone);
+    return resumeCheckout(existing.data.id, input.phone, input.reservationId);
   }
 
   const reservation = await getReservation(input.reservationId);
@@ -97,12 +97,21 @@ export async function createCheckout(input: {
 
   if (orderError || !order) {
     if (orderError?.code === "23505") {
-      const dup = await supabase
+      const { data: byKey } = await supabase
         .from("orders")
         .select("id")
         .eq("idempotency_key", input.idempotencyKey)
-        .single();
-      if (dup.data) return resumeCheckout(dup.data.id, input.phone);
+        .maybeSingle();
+      if (byKey) return resumeCheckout(byKey.id, input.phone, input.reservationId);
+
+      const { data: byReservation } = await supabase
+        .from("orders")
+        .select("id")
+        .eq("reservation_id", reservation.id)
+        .maybeSingle();
+      if (byReservation) {
+        return resumeCheckout(byReservation.id, input.phone, input.reservationId);
+      }
     }
     throw new AppError("Failed to create order", { code: "DATABASE", cause: orderError });
   }
@@ -160,13 +169,17 @@ export async function createCheckout(input: {
   };
 }
 
-async function resumeCheckout(orderId: string, phone: string): Promise<CheckoutResponse> {
+async function resumeCheckout(
+  orderId: string,
+  phone: string,
+  reservationId: string,
+): Promise<CheckoutResponse> {
   await assertGuestOwnsOrder(orderId, phone);
 
   const supabase = createAdminSupabaseClient();
   const { data: order, error: orderError } = await supabase
     .from("orders")
-    .select("id, total_amount, status")
+    .select("id, total_amount, status, reservation_id")
     .eq("id", orderId)
     .single();
 
@@ -174,8 +187,31 @@ async function resumeCheckout(orderId: string, phone: string): Promise<CheckoutR
     throw new AppError("Order not found", { code: "NOT_FOUND", status: 404, expose: true });
   }
 
+  if (order.reservation_id !== reservationId) {
+    throw new AppError("Checkout does not match this reservation", {
+      code: "CONFLICT",
+      status: 409,
+      expose: true,
+    });
+  }
+
   if (order.status === "confirmed") {
     throw new AppError("Order is already paid", { code: "CONFLICT", status: 409, expose: true });
+  }
+
+  const { data: reservation } = await supabase
+    .from("reservations")
+    .select("status, expires_at, inventory_held")
+    .eq("id", order.reservation_id)
+    .single();
+
+  if (
+    !reservation ||
+    reservation.status !== "pending" ||
+    !reservation.inventory_held ||
+    new Date(reservation.expires_at) <= new Date()
+  ) {
+    throw new AppError("Reservation has expired", { code: "CONFLICT", status: 409, expose: true });
   }
 
   const { data: pendingPayment } = await supabase
@@ -183,12 +219,50 @@ async function resumeCheckout(orderId: string, phone: string): Promise<CheckoutR
     .select("id, provider_payment_id")
     .eq("order_id", orderId)
     .eq("status", "pending")
+    .order("created_at", { ascending: false })
+    .limit(1)
     .maybeSingle();
 
   let paymentId = pendingPayment?.id ?? "";
   let providerPaymentId = pendingPayment?.provider_payment_id;
 
   if (!pendingPayment) {
+    const { data: failedPayment } = await supabase
+      .from("payments")
+      .select("id, provider_payment_id")
+      .eq("order_id", orderId)
+      .eq("status", "failed")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (failedPayment) {
+      const { data: reopened, error: reopenError } = await supabase
+        .from("payments")
+        .update({
+          status: "pending",
+          webhook_verified: false,
+          webhook_received_at: null,
+          raw_webhook_payload: null,
+        })
+        .eq("id", failedPayment.id)
+        .eq("status", "failed")
+        .select("id, provider_payment_id")
+        .single();
+
+      if (reopenError || !reopened) {
+        throw new AppError("Failed to reopen payment for retry", {
+          code: "DATABASE",
+          cause: reopenError,
+        });
+      }
+
+      paymentId = reopened.id;
+      providerPaymentId = reopened.provider_payment_id;
+    }
+  }
+
+  if (!paymentId) {
     const { data: guest } = await supabase
       .from("orders")
       .select("customer_id")
@@ -221,14 +295,31 @@ async function resumeCheckout(orderId: string, phone: string): Promise<CheckoutR
       .single();
 
     if (payError || !created) {
-      throw new AppError("Failed to create payment for order", {
-        code: "DATABASE",
-        cause: payError,
-      });
+      if (payError?.code === "23505") {
+        const { data: existingPayment } = await supabase
+          .from("payments")
+          .select("id, provider_payment_id")
+          .eq("provider_payment_id", session.providerPaymentId)
+          .maybeSingle();
+        if (existingPayment) {
+          paymentId = existingPayment.id;
+          providerPaymentId = existingPayment.provider_payment_id;
+        } else {
+          throw new AppError("Failed to create payment for order", {
+            code: "DATABASE",
+            cause: payError,
+          });
+        }
+      } else {
+        throw new AppError("Failed to create payment for order", {
+          code: "DATABASE",
+          cause: payError,
+        });
+      }
+    } else {
+      paymentId = created.id;
+      providerPaymentId = created.provider_payment_id;
     }
-
-    paymentId = created.id;
-    providerPaymentId = created.provider_payment_id;
   }
 
   const appUrl = getAppBaseUrl();
@@ -263,12 +354,18 @@ export async function getCheckoutStatus(
     throw new AppError("Order not found", { code: "NOT_FOUND", status: 404, expose: true });
   }
 
-  const { data: payment } = await supabase
+  const { data: payments } = await supabase
     .from("payments")
     .select("status")
     .eq("order_id", orderId)
-    .eq("status", "completed")
-    .maybeSingle();
+    .order("created_at", { ascending: false });
+
+  let paymentStatus: CheckoutStatusResponse["paymentStatus"] = "pending";
+  if (payments?.some((p) => p.status === "completed")) {
+    paymentStatus = "completed";
+  } else if (payments?.some((p) => p.status === "failed")) {
+    paymentStatus = "failed";
+  }
 
   const { count } = await supabase
     .from("tickets")
@@ -278,7 +375,7 @@ export async function getCheckoutStatus(
   return {
     orderId: order.id,
     orderStatus: order.status,
-    paymentStatus: payment ? "completed" : "pending",
+    paymentStatus,
     ticketsIssued: order.tickets_issued,
     ticketCount: count ?? 0,
   };

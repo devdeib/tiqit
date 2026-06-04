@@ -66,6 +66,8 @@ export function clientIpFromRequest(request: Request): string {
 export const RATE_LIMITS = {
   guestWrite: { name: "guest-write", limit: 30, windowSec: 60 },
   guestRead: { name: "guest-read", limit: 120, windowSec: 60 },
+  organizerWrite: { name: "organizer-write", limit: 60, windowSec: 60 },
+  organizerRead: { name: "organizer-read", limit: 120, windowSec: 60 },
   webhook: { name: "webhook", limit: 200, windowSec: 60 },
   admin: { name: "admin", limit: 60, windowSec: 60 },
 } as const satisfies Record<string, RateLimitConfig>;

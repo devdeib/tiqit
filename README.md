@@ -43,6 +43,12 @@ edge-functions/   # Supabase Edge Functions (Phase 1)
 
 Requires Phase 0 plus `HMAC_SECRET_V1` (32+ byte secret) in `.env.local`. Payments use **mock Sham Cash** by default; live mode requires `SHAM_CASH_FORCE_LIVE=true` (not needed for Phase 1).
 
+## Phase 2 — Organizer portal
+
+- Sign in: `/login` (Supabase Auth + `users` row with `role=organizer`, `organizer_status=approved`)
+- Dashboard: `/organizer`
+- Run migration `supabase/migrations/20250606-phase2-organizer-approval.sql` and see `docs/PHASE2-ORGANIZER.md`
+
 ### Flow
 
 1. Apply migrations once on your Supabase DB: `20250604-organizer-publish-events.sql`, then `20250605-phase1-hardening-fulfillment.sql`.

@@ -16,8 +16,8 @@ export default async function HomePage() {
             <p className="text-sm">
               The homepage only lists events with status{" "}
               <span className="font-medium text-neutral-400">active</span> (or
-              sold out / completed / cancelled). Apply the organizer-publish
-              migration, run{" "}
+              sold out / completed / cancelled). Organizers submit events for
+              admin approval; run{" "}
               <code className="rounded bg-neutral-800 px-1 text-neutral-300">
                 supabase/seed-dev.sql
               </code>{" "}

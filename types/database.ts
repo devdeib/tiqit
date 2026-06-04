@@ -173,6 +173,24 @@ export interface Database {
         Update: Partial<Database["public"]["Tables"]["ticket_types"]["Insert"]>;
         Relationships: [];
       };
+      staff_event_assignments: {
+        Row: {
+          id: string;
+          staff_id: string;
+          event_id: string;
+          assigned_by: string;
+          assigned_at: string;
+        };
+        Insert: {
+          id?: string;
+          staff_id: string;
+          event_id: string;
+          assigned_by: string;
+          assigned_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["staff_event_assignments"]["Insert"]>;
+        Relationships: [];
+      };
       reservation_items: {
         Row: {
           id: string;

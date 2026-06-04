@@ -58,7 +58,7 @@ export type CheckoutResponse = {
 export type CheckoutStatusResponse = {
   orderId: string;
   orderStatus: string;
-  paymentStatus: string;
+  paymentStatus: "pending" | "completed" | "failed";
   ticketsIssued: boolean;
   ticketCount: number;
 };
