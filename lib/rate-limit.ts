@@ -70,4 +70,6 @@ export const RATE_LIMITS = {
   organizerRead: { name: "organizer-read", limit: 120, windowSec: 60 },
   webhook: { name: "webhook", limit: 200, windowSec: 60 },
   admin: { name: "admin", limit: 60, windowSec: 60 },
+  adminRead: { name: "admin-read", limit: 120, windowSec: 60 },
+  adminWrite: { name: "admin-write", limit: 60, windowSec: 60 },
 } as const satisfies Record<string, RateLimitConfig>;

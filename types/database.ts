@@ -59,6 +59,28 @@ export interface Database {
         Update: Partial<Database["public"]["Tables"]["platform_config"]["Insert"]>;
         Relationships: [];
       };
+      admin_audit_logs: {
+        Row: {
+          id: string;
+          admin_id: string;
+          action: string;
+          entity_type: string;
+          entity_id: string | null;
+          metadata: Json | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          admin_id: string;
+          action: string;
+          entity_type: string;
+          entity_id?: string | null;
+          metadata?: Json | null;
+          created_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["admin_audit_logs"]["Insert"]>;
+        Relationships: [];
+      };
       users: {
         Row: {
           id: string;

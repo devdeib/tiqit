@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "staging:audit": "node scripts/staging-audit.mjs"
+    "staging:audit": "node scripts/staging-audit.mjs",
+    "test": "node --experimental-strip-types --test tests/admin-schemas.test.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.3",
