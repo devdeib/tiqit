@@ -1,7 +1,8 @@
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { AppError } from "@/lib/errors";
 import { assertGuestOwnsOrder, assertGuestOwnsReservation } from "@/lib/guest-ownership";
-import { createShamCashSession, isShamCashMockMode } from "@/services/sham-cash/client";
+import { getAppBaseUrl } from "@/lib/app-url";
+import { createShamCashSession, isShamCashMockMode } from "@/services/sham-cash";
 import { getReservation } from "@/services/reservations.service";
 import type { CheckoutResponse, CheckoutStatusResponse } from "@/types/api";
 
@@ -230,7 +231,7 @@ async function resumeCheckout(orderId: string, phone: string): Promise<CheckoutR
     providerPaymentId = created.provider_payment_id;
   }
 
-  const env = process.env.APP_URL ?? "http://localhost:3000";
+  const appUrl = getAppBaseUrl();
   const mockMode = providerPaymentId?.startsWith("mock_") ?? isShamCashMockMode();
 
   return {
@@ -238,8 +239,8 @@ async function resumeCheckout(orderId: string, phone: string): Promise<CheckoutR
     paymentId,
     totalAmount: Number(order.total_amount),
     redirectUrl: mockMode
-      ? `${env}/checkout/mock-pay?orderId=${orderId}`
-      : `${env}/checkout/redirect?orderId=${orderId}`,
+      ? `${appUrl}/checkout/mock-pay?orderId=${orderId}`
+      : `${appUrl}/checkout/redirect?orderId=${orderId}`,
     mockMode,
   };
 }

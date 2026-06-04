@@ -1,10 +1,13 @@
 import { createClient } from "@supabase/supabase-js";
+import { validateDeploymentEnv, type DeploymentValidation } from "@/lib/deployment";
 import {
   checkEnvPresence,
+  getAppEnvironment,
   REQUIRED_READY_ENV_KEYS,
   REQUIRED_SERVER_ENV_KEYS,
 } from "@/lib/env";
 import { logger } from "@/lib/logger";
+import { resolveShamCashMode } from "@/services/sham-cash";
 import type { Database } from "@/types/database";
 
 export type HealthCheckResult = {
@@ -25,6 +28,9 @@ export type ReadyCheckResult = HealthCheckResult & {
     platformConfig: boolean;
     hmacKeyVersion: boolean;
     error?: string;
+  };
+  deployment: DeploymentValidation & {
+    paymentProvider: ReturnType<typeof resolveShamCashMode>;
   };
 };
 
@@ -117,10 +123,24 @@ export async function runReadyCheck(): Promise<ReadyCheckResult> {
   }
 
   const schemaOk = platformConfig && hmacKeyVersion;
+  const baseDeployment = validateDeploymentEnv();
+  let paymentProvider: ReturnType<typeof resolveShamCashMode> = "mock";
+  try {
+    paymentProvider = resolveShamCashMode();
+  } catch (err) {
+    baseDeployment.ok = false;
+    baseDeployment.errors.push(
+      err instanceof Error ? err.message : "Payment provider config invalid",
+    );
+  }
+
+  const deployment = { ...baseDeployment, paymentProvider };
+
+  const deployOk = deployment.ok;
   const status =
-    base.status === "ok" && schemaOk
+    base.status === "ok" && schemaOk && deployOk
       ? "ok"
-      : base.status === "error" && !schemaOk
+      : base.status === "error" && !schemaOk && !deployOk
         ? "error"
         : "degraded";
 
@@ -133,5 +153,6 @@ export async function runReadyCheck(): Promise<ReadyCheckResult> {
       hmacKeyVersion,
       error: schemaError,
     },
+    deployment,
   };
 }

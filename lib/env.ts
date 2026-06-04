@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+export type AppEnvironment = "development" | "staging" | "production";
+
 /** .env often sets `KEY=` — treat blank as unset so `.optional()` works. */
 function optionalEnvString(minLength = 1) {
   return z.preprocess(
@@ -29,7 +31,16 @@ const serverEnvSchema = z.object({
     (val) => (typeof val === "string" && val.trim() === "" ? undefined : val),
     z.enum(["true", "false"]).optional(),
   ),
+  SHAM_CASH_API_BASE_URL: optionalEnvUrl(),
   APP_URL: optionalEnvUrl(),
+  APP_ENV: z.preprocess(
+    (val) => (typeof val === "string" && val.trim() === "" ? undefined : val),
+    z.enum(["development", "staging", "production"]).optional(),
+  ),
+  ALLOW_DEV_PAYMENT: z.preprocess(
+    (val) => (typeof val === "string" && val.trim() === "" ? undefined : val),
+    z.enum(["true", "false"]).optional(),
+  ),
 });
 
 const clientEnvSchema = z.object({
@@ -76,6 +87,26 @@ export const REQUIRED_SERVER_ENV_KEYS = [
 export const REQUIRED_READY_ENV_KEYS = [
   ...REQUIRED_SERVER_ENV_KEYS,
 ] as const;
+
+/** Logical environment for config validation (explicit APP_ENV or Vercel mapping). */
+export function getAppEnvironment(): AppEnvironment {
+  const explicit = process.env.APP_ENV;
+  if (
+    explicit === "development" ||
+    explicit === "staging" ||
+    explicit === "production"
+  ) {
+    return explicit;
+  }
+  const vercelEnv = process.env.VERCEL_ENV;
+  if (vercelEnv === "production") return "production";
+  if (vercelEnv === "preview") return "staging";
+  return "development";
+}
+
+export function isProductionDeploy(): boolean {
+  return getAppEnvironment() === "production";
+}
 
 export function checkEnvPresence(keys: readonly string[]): {
   ok: boolean;

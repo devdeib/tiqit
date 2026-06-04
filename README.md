@@ -65,6 +65,14 @@ Requires Phase 0 plus `HMAC_SECRET_V1` (32+ byte secret) in `.env.local`. For lo
 | `POST` | `/api/dev/simulate-payment` | Dev-only mock fulfillment |
 | `POST` | `/api/orders/lookup` | Confirmation (orderId + phone) |
 
+## Deployment (Phase 1)
+
+See **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** for Vercel, staging/production env separation, Sham Cash webhook URL, and `/api/ready` deployment checks.
+
+- `env/staging.env.example` → Vercel **Preview**
+- `env/production.env.example` → Vercel **Production**
+- Payment provider: `services/sham-cash/` (`mock-adapter` | `live-adapter`)
+
 ### Regenerate database types (after schema changes)
 
 ```bash
