@@ -1,4 +1,5 @@
 import { AppError } from "@/lib/errors";
+import { databaseAppError } from "@/lib/database-error";
 import type { AdminContext } from "@/lib/admin-auth";
 import type { AdminDashboardStats, AdminEventDetail, AdminPendingEvent } from "@/types/admin";
 import { logAdminAction } from "@/services/admin/audit.service";
@@ -37,7 +38,7 @@ export async function listPendingEvents(
     .order("created_at", { ascending: true });
 
   if (error) {
-    throw new AppError("Failed to load pending events", { code: "DATABASE", cause: error });
+    throw databaseAppError("Failed to load pending events", error);
   }
 
   const rows: AdminPendingEvent[] = [];

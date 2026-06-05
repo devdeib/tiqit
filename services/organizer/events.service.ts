@@ -1,4 +1,5 @@
 import { AppError } from "@/lib/errors";
+import { databaseAppError } from "@/lib/database-error";
 import type { OrganizerContext } from "@/lib/organizer-auth";
 import type { EventStatus } from "@/types/database";
 import type {
@@ -19,7 +20,7 @@ export async function listOrganizerEvents(
     .order("created_at", { ascending: false });
 
   if (error) {
-    throw new AppError("Failed to load events", { code: "DATABASE", cause: error });
+    throw databaseAppError("Failed to load events", error);
   }
 
   return (data ?? []).map(mapEventSummary);
