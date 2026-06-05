@@ -1,18 +1,17 @@
 "use client";
 
 import { Suspense, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useLoginFormState } from "@/lib/auth/use-login-form-state";
 import { createBrowserSupabaseClient } from "@/lib/supabase/browser";
 
 function LoginForm() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const accessDenied = searchParams.get("error") === "access_denied";
+  const { error, setError, accessDenied, clearError } = useLoginFormState();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -52,7 +51,10 @@ function LoginForm() {
           type="email"
           placeholder="Email"
           value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          onChange={(e) => {
+            setEmail(e.target.value);
+            clearError();
+          }}
           className="w-full rounded border px-3 py-2"
         />
         <input
@@ -60,7 +62,10 @@ function LoginForm() {
           type="password"
           placeholder="Password"
           value={password}
-          onChange={(e) => setPassword(e.target.value)}
+          onChange={(e) => {
+            setPassword(e.target.value);
+            clearError();
+          }}
           className="w-full rounded border px-3 py-2"
         />
         {error && <p className="text-sm text-red-600">{error}</p>}
