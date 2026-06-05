@@ -9,7 +9,7 @@ import { createBrowserSupabaseClient } from "@/lib/supabase/browser";
 function AdminLoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { error, setError, accessDenied, clearError } = useLoginFormState();
+  const { error, setError, accessDenied, clearError } = useLoginFormState("admin");
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");

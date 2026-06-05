@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@/types/database";
+import { redirectToPortalLogin } from "@/lib/auth/login-flash-middleware";
 import { resolveOrganizerAccess } from "@/lib/organizer-profile";
 import { resolveAdminAccess } from "@/lib/admin-profile";
 import { resolveStaffAccess } from "@/lib/staff-profile";
@@ -82,13 +83,12 @@ export async function middleware(request: NextRequest) {
     }
 
     if (access !== "active") {
-      const loginUrl = request.nextUrl.clone();
-      loginUrl.pathname = "/staff/login";
-      loginUrl.searchParams.set("error", "access_denied");
-      if (access === "anonymous") {
-        loginUrl.searchParams.set("next", pathname);
-      }
-      return NextResponse.redirect(loginUrl);
+      return redirectToPortalLogin(
+        request,
+        "staff",
+        pathname,
+        access === "anonymous",
+      );
     }
 
     return response;
@@ -125,13 +125,12 @@ export async function middleware(request: NextRequest) {
     }
 
     if (access !== "admin") {
-      const loginUrl = request.nextUrl.clone();
-      loginUrl.pathname = "/admin/login";
-      loginUrl.searchParams.set("error", "access_denied");
-      if (access === "anonymous") {
-        loginUrl.searchParams.set("next", pathname);
-      }
-      return NextResponse.redirect(loginUrl);
+      return redirectToPortalLogin(
+        request,
+        "admin",
+        pathname,
+        access === "anonymous",
+      );
     }
 
     return response;
@@ -152,13 +151,12 @@ export async function middleware(request: NextRequest) {
 
     if (isOrganizerPage) {
       if (access !== "approved") {
-        const loginUrl = request.nextUrl.clone();
-        loginUrl.pathname = "/login";
-        loginUrl.searchParams.set("error", "access_denied");
-        if (access === "anonymous") {
-          loginUrl.searchParams.set("next", pathname);
-        }
-        return NextResponse.redirect(loginUrl);
+        return redirectToPortalLogin(
+          request,
+          "organizer",
+          pathname,
+          access === "anonymous",
+        );
       }
       return response;
     }
@@ -179,4 +177,3 @@ export const config = {
     "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$|api/health|api/ready|api/webhooks|api/debug).*)",
   ],
 };
-
