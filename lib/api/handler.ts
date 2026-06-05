@@ -4,6 +4,11 @@ import { createRequestContext, type RequestContext } from "@/lib/api/request-con
 import { AppError, isAppError, toAppError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
 import {
+  logApiRequestCompleted,
+  logApiRequestStarted,
+} from "@/lib/observability/request-log";
+import { reportProductionError } from "@/lib/observability/error-report";
+import {
   checkRateLimit,
   clientIpFromRequest,
   type RateLimitConfig,
@@ -34,6 +39,7 @@ export function withApiHandler(
     logClientErrors?: boolean;
   },
 ): Promise<NextResponse> {
+  const started = Date.now();
   const ctx = options?.request
     ? createRequestContext(options.request, options.route)
     : { requestId: randomUUID(), route: options?.route };
@@ -49,9 +55,24 @@ export function withApiHandler(
     }
   }
 
+  logApiRequestStarted({
+    requestId: ctx.requestId,
+    route: ctx.route,
+    method: ctx.method,
+    clientIp: ctx.clientIp,
+  });
+
   return handler(ctx)
     .then((response) => {
       response.headers.set("x-request-id", ctx.requestId);
+      logApiRequestCompleted({
+        requestId: ctx.requestId,
+        route: ctx.route,
+        method: ctx.method,
+        clientIp: ctx.clientIp,
+        status: response.status,
+        durationMs: Date.now() - started,
+      });
       return response;
     })
     .catch((err: unknown) => {
@@ -59,17 +80,29 @@ export function withApiHandler(
       const logCtx = {
         requestId: ctx.requestId,
         route: ctx.route,
+        method: ctx.method,
         clientIp: ctx.clientIp,
         code: appError.code,
         status: appError.status,
         message: appError.message,
+        durationMs: Date.now() - started,
       };
 
       if (appError.status >= 500) {
-        logger.error("api_request_failed", logCtx);
+        reportProductionError(appError, logCtx);
       } else if (options?.logClientErrors !== false && appError.status >= 400) {
         logger.warn("api_request_rejected", logCtx);
       }
+
+      logApiRequestCompleted({
+        requestId: ctx.requestId,
+        route: ctx.route,
+        method: ctx.method,
+        clientIp: ctx.clientIp,
+        status: appError.status,
+        durationMs: Date.now() - started,
+        code: appError.code,
+      });
 
       return jsonError(appError, ctx.requestId);
     });

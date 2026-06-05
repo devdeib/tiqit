@@ -1,56 +1,35 @@
 import "server-only";
 
 import { AppError } from "@/lib/errors";
+import { createKvRateLimitStore } from "@/lib/rate-limit/kv-store";
+import { createMemoryRateLimitStore } from "@/lib/rate-limit/memory-store";
+import type { RateLimitConfig, RateLimitStore } from "@/lib/rate-limit/types";
 
-type Bucket = {
-  count: number;
-  resetAt: number;
-};
+export type { RateLimitConfig, RateLimitResult, RateLimitStore } from "@/lib/rate-limit/types";
 
-const stores = new Map<string, Map<string, Bucket>>();
+let cachedStore: RateLimitStore | null = null;
 
-export type RateLimitConfig = {
-  /** Unique bucket name, e.g. `guest-write` */
-  name: string;
-  /** Max requests per window */
-  limit: number;
-  /** Window size in seconds */
-  windowSec: number;
-};
+function getRateLimitStore(): RateLimitStore {
+  if (cachedStore) return cachedStore;
 
-function pruneStore(store: Map<string, Bucket>, now: number): void {
-  for (const [key, bucket] of store) {
-    if (bucket.resetAt <= now) store.delete(key);
-  }
+  const backend = process.env.RATE_LIMIT_BACKEND?.trim() ?? "memory";
+  cachedStore = backend === "kv" ? createKvRateLimitStore() : createMemoryRateLimitStore();
+  return cachedStore;
 }
 
-/**
- * In-memory rate limit (per serverless instance).
- * Replace with Redis / Vercel KV before high-traffic production.
- */
+/** Reset store selection (tests only). */
+export function resetRateLimitStoreForTests(): void {
+  cachedStore = null;
+}
+
 export function checkRateLimit(config: RateLimitConfig, key: string): void {
-  const now = Date.now();
-  let store = stores.get(config.name);
-  if (!store) {
-    store = new Map();
-    stores.set(config.name, store);
-  }
-
-  if (store.size > 10_000) pruneStore(store, now);
-
-  const bucket = store.get(key);
-  if (!bucket || bucket.resetAt <= now) {
-    store.set(key, { count: 1, resetAt: now + config.windowSec * 1000 });
-    return;
-  }
-
-  bucket.count += 1;
-  if (bucket.count > config.limit) {
+  const result = getRateLimitStore().check(config, key);
+  if (!result.allowed) {
     throw new AppError("Too many requests", {
       code: "RATE_LIMITED",
       status: 429,
       expose: true,
-      details: { retryAfterSec: Math.ceil((bucket.resetAt - now) / 1000) },
+      details: { retryAfterSec: result.retryAfterSec ?? config.windowSec },
     });
   }
 }

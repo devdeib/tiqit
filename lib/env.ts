@@ -45,6 +45,17 @@ const serverEnvSchema = z.object({
     (val) => (typeof val === "string" && val.trim() === "" ? undefined : val),
     z.enum(["true", "false"]).optional(),
   ),
+  ADMIN_API_SECRET: optionalEnvString(16),
+  LOG_FORMAT: z.preprocess(
+    (val) => (typeof val === "string" && val.trim() === "" ? undefined : val),
+    z.enum(["json", "pretty"]).optional(),
+  ),
+  RATE_LIMIT_BACKEND: z.preprocess(
+    (val) => (typeof val === "string" && val.trim() === "" ? undefined : val),
+    z.enum(["memory", "kv"]).optional(),
+  ),
+  RATE_LIMIT_KV_URL: optionalEnvUrl(),
+  RATE_LIMIT_KV_TOKEN: optionalEnvString(1),
 });
 
 const clientEnvSchema = z.object({

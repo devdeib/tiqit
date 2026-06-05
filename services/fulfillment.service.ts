@@ -8,6 +8,7 @@ import {
 } from "@/lib/crypto/ticket-token";
 import { assertGuestOwnsOrder } from "@/lib/guest-ownership";
 import { logger } from "@/lib/logger";
+import { logPaymentEvent } from "@/lib/observability/payment-log";
 import type { OrderConfirmationResponse } from "@/types/api";
 import type { Json } from "@/types/database";
 
@@ -105,6 +106,13 @@ export async function processPaymentWebhook(
   }
 
   const result = data as FulfillRpcResult;
+  logPaymentEvent({
+    event: result.already_processed ? "payment_duplicate_webhook" : "payment_fulfilled",
+    orderId: result.order_id,
+    providerPaymentId: payload.providerPaymentId,
+    provider: "sham_cash",
+    alreadyProcessed: result.already_processed,
+  });
   logger.info("Payment fulfilled", {
     orderId: result.order_id,
     providerPaymentId: payload.providerPaymentId,

@@ -2,6 +2,7 @@ import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { AppError } from "@/lib/errors";
 import { assertGuestOwnsOrder, assertGuestOwnsReservation } from "@/lib/guest-ownership";
 import { getAppBaseUrl } from "@/lib/app-url";
+import { logPaymentEvent } from "@/lib/observability/payment-log";
 import { createShamCashSession, isShamCashMockMode } from "@/services/sham-cash";
 import { getReservation } from "@/services/reservations.service";
 import type { CheckoutResponse, CheckoutStatusResponse } from "@/types/api";
@@ -22,6 +23,7 @@ export async function createCheckout(input: {
     .maybeSingle();
 
   if (existing.data) {
+    logPaymentEvent({ event: "checkout_resumed", orderId: existing.data.id });
     return resumeCheckout(existing.data.id, input.phone, input.reservationId);
   }
 
@@ -159,6 +161,17 @@ export async function createCheckout(input: {
   if (payError || !payment) {
     throw new AppError("Failed to create payment", { code: "DATABASE", cause: payError });
   }
+
+  logPaymentEvent({
+    event: "checkout_session_created",
+    orderId: order.id,
+    paymentId: payment.id,
+    providerPaymentId: session.providerPaymentId,
+    provider: "sham_cash",
+    mode: session.mockMode ? "mock" : "live",
+    amount: Number(order.total_amount),
+    mockMode: session.mockMode,
+  });
 
   return {
     orderId: order.id,

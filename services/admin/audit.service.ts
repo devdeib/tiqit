@@ -1,3 +1,4 @@
+import { reportProductionError } from "@/lib/observability/error-report";
 import type { AdminContext } from "@/lib/admin-auth";
 import type { Json } from "@/types/database";
 
@@ -19,6 +20,10 @@ export async function logAdminAction(
   });
 
   if (error) {
-    console.error("admin_audit_log_failed", error.message);
+    reportProductionError(error, {
+      event: "admin_audit_log_failed",
+      action: input.action,
+      entityType: input.entityType,
+    });
   }
 }

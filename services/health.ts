@@ -11,6 +11,7 @@ import {
   REQUIRED_SERVER_ENV_KEYS,
 } from "@/lib/env";
 import { logger } from "@/lib/logger";
+import { verifyDatabaseMigrations, type MigrationVerificationResult } from "@/lib/migrations/verify";
 import {
   type ShamCashConfirmationMode,
   resolveShamCashMode,
@@ -34,6 +35,7 @@ export type ReadyCheckResult = HealthCheckResult & {
     ok: boolean;
     platformConfig: boolean;
     hmacKeyVersion: boolean;
+    migrations: MigrationVerificationResult;
     error?: string;
   };
   deployment: DeploymentValidation & {
@@ -98,6 +100,7 @@ export async function runReadyCheck(): Promise<ReadyCheckResult> {
 
   let platformConfig = false;
   let hmacKeyVersion = false;
+  let migrations: MigrationVerificationResult = { ok: false, markers: {}, missing: [] };
   let schemaError: string | undefined;
 
   if (env.ok) {
@@ -107,7 +110,7 @@ export async function runReadyCheck(): Promise<ReadyCheckResult> {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    const [configRes, hmacRes] = await Promise.all([
+    const [configRes, hmacRes, migrationRes] = await Promise.all([
       client
         .from("platform_config")
         .select("key")
@@ -118,21 +121,25 @@ export async function runReadyCheck(): Promise<ReadyCheckResult> {
         .select("version")
         .eq("is_current", true)
         .maybeSingle(),
+      verifyDatabaseMigrations(client),
     ]);
 
     platformConfig = !configRes.error && configRes.data !== null;
     hmacKeyVersion = !hmacRes.error && hmacRes.data !== null;
+    migrations = migrationRes;
 
     if (configRes.error) schemaError = configRes.error.message;
     else if (hmacRes.error) schemaError = hmacRes.error.message;
     else if (!platformConfig || !hmacKeyVersion) {
       schemaError = "Schema seed incomplete (platform_config or hmac_key_versions)";
+    } else if (!migrations.ok) {
+      schemaError = `Missing migrations: ${migrations.missing.join(", ")}`;
     }
   } else {
     schemaError = "Skipped: missing env";
   }
 
-  const schemaOk = platformConfig && hmacKeyVersion;
+  const schemaOk = platformConfig && hmacKeyVersion && migrations.ok;
   const baseDeployment = validateDeploymentEnv();
   let paymentProvider: ReturnType<typeof resolveShamCashMode> = "mock";
   try {
@@ -168,6 +175,7 @@ export async function runReadyCheck(): Promise<ReadyCheckResult> {
       ok: schemaOk,
       platformConfig,
       hmacKeyVersion,
+      migrations,
       error: schemaError,
     },
     deployment,

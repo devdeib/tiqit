@@ -3,6 +3,7 @@ import { randomUUID } from "crypto";
 export type RequestContext = {
   requestId: string;
   route?: string;
+  method?: string;
   clientIp?: string;
 };
 
@@ -14,6 +15,7 @@ export function createRequestContext(
   return {
     requestId: incoming?.trim() || randomUUID(),
     route,
+    method: request.method,
     clientIp: undefined,
   };
 }
