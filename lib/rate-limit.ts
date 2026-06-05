@@ -72,4 +72,6 @@ export const RATE_LIMITS = {
   admin: { name: "admin", limit: 60, windowSec: 60 },
   adminRead: { name: "admin-read", limit: 120, windowSec: 60 },
   adminWrite: { name: "admin-write", limit: 60, windowSec: 60 },
+  staffRead: { name: "staff-read", limit: 120, windowSec: 60 },
+  staffWrite: { name: "staff-write", limit: 90, windowSec: 60 },
 } as const satisfies Record<string, RateLimitConfig>;

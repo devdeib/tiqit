@@ -23,6 +23,33 @@ export function buildQrPayload(token: string, signature: string, keyVersion = 1)
   return `v${keyVersion}:${token}:${signature}`;
 }
 
+/** Parses `v{version}:{token}:{signature}` or raw token-only input (manual fallback). */
+export function parseQrInput(input: string): {
+  keyVersion: number;
+  token: string;
+  signature: string | null;
+} | null {
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+
+  if (trimmed.startsWith("v")) {
+    const parts = trimmed.split(":");
+    if (parts.length !== 3) return null;
+    const version = Number.parseInt(parts[0]!.slice(1), 10);
+    const token = parts[1]!;
+    const signature = parts[2]!;
+    if (!Number.isFinite(version) || !token || !signature) return null;
+    if (!/^[0-9a-f]{64}$/i.test(signature)) return null;
+    return { keyVersion: version, token, signature: signature.toLowerCase() };
+  }
+
+  if (/^[0-9a-f]{64}$/i.test(trimmed)) {
+    return { keyVersion: 1, token: trimmed, signature: null };
+  }
+
+  return null;
+}
+
 export function verifyTicketToken(
   token: string,
   signature: string,

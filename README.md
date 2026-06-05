@@ -54,6 +54,11 @@ Requires Phase 0 plus `HMAC_SECRET_V1` (32+ byte secret) in `.env.local`. Paymen
 - Sign in: `/admin/login` (`users.role = admin`)
 - Run `supabase/migrations/20250608-phase3-admin-portal.sql` and see `docs/PHASE3-ADMIN.md`
 
+## Phase 4 — Staff scanning
+
+- Sign in: `/staff/login` (`users.role = staff` + event assignment)
+- Run `supabase/migrations/20250609-phase4-staff-scanning.sql` and see `docs/PHASE4-STAFF.md`
+
 ### Flow
 
 1. Apply migrations once on your Supabase DB: `20250604-organizer-publish-events.sql`, then `20250605-phase1-hardening-fulfillment.sql`.
