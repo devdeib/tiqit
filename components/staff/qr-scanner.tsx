@@ -1,83 +1,114 @@
 "use client";
 
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 type Props = {
   onScan: (value: string) => void;
   disabled?: boolean;
 };
 
-export function QrScanner({ onScan, disabled }: Props) {
-  const videoId = useId().replace(/:/g, "");
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const [cameraSupported, setCameraSupported] = useState<boolean | null>(null);
-  const [cameraError, setCameraError] = useState<string | null>(null);
-  const lastScanRef = useRef<string>("");
+function mapCameraError(err: unknown): string {
+  if (err instanceof DOMException) {
+    if (err.name === "NotAllowedError") {
+      return "Camera permission denied. Allow camera access or use manual entry below.";
+    }
+    if (err.name === "NotFoundError" || err.name === "DevicesNotFoundError") {
+      return "No camera found on this device. Use manual entry below.";
+    }
+    if (err.name === "NotReadableError") {
+      return "Camera is in use by another app. Close it and try again.";
+    }
+    if (err.name === "SecurityError") {
+      return "Camera requires a secure (HTTPS) connection.";
+    }
+  }
 
-  const stopCamera = useCallback(() => {
-    streamRef.current?.getTracks().forEach((t) => t.stop());
-    streamRef.current = null;
-  }, []);
+  if (err instanceof Error) {
+    const message = err.message.toLowerCase();
+    if (message.includes("permission") || message.includes("not allowed")) {
+      return "Camera permission denied. Allow camera access or use manual entry below.";
+    }
+    if (message.includes("not found") || message.includes("no camera")) {
+      return "No camera found on this device. Use manual entry below.";
+    }
+  }
+
+  return "Camera unavailable. Use manual entry below.";
+}
+
+export function QrScanner({ onScan, disabled }: Props) {
+  const readerId = useId().replace(/:/g, "");
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [cameraReady, setCameraReady] = useState(false);
+  const lastScanRef = useRef("");
+  const onScanRef = useRef(onScan);
+  const disabledRef = useRef(disabled);
+
+  useEffect(() => {
+    onScanRef.current = onScan;
+  }, [onScan]);
+
+  useEffect(() => {
+    disabledRef.current = disabled;
+    if (!disabled) {
+      lastScanRef.current = "";
+    }
+  }, [disabled]);
 
   useEffect(() => {
     if (disabled) return;
 
     let cancelled = false;
-    let intervalId: ReturnType<typeof setInterval> | undefined;
+    let scanner: import("html5-qrcode").Html5Qrcode | null = null;
 
     async function start() {
       if (!navigator.mediaDevices?.getUserMedia) {
-        setCameraSupported(false);
+        setCameraError("Camera not supported in this browser. Use manual entry below.");
+        setCameraReady(false);
         return;
       }
 
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "environment" },
-          audio: false,
+        const { Html5Qrcode } = await import("html5-qrcode");
+        if (cancelled) return;
+
+        scanner = new Html5Qrcode(readerId, {
+          verbose: false,
+          useBarCodeDetectorIfSupported: false,
         });
-        if (cancelled) {
-          stream.getTracks().forEach((t) => t.stop());
-          return;
-        }
-        streamRef.current = stream;
-        const video = videoRef.current;
-        if (video) {
-          video.srcObject = stream;
-          await video.play();
-        }
-        setCameraSupported(true);
 
-        type BarcodeDetectorApi = new (options: { formats: string[] }) => {
-          detect: (src: HTMLVideoElement) => Promise<{ rawValue: string }[]>;
-        };
-        const BarcodeDetectorCtor = (
-          window as Window & { BarcodeDetector?: BarcodeDetectorApi }
-        ).BarcodeDetector;
+        await scanner.start(
+          { facingMode: "environment" },
+          {
+            fps: 10,
+            aspectRatio: 1,
+            qrbox: (viewfinderWidth, viewfinderHeight) => {
+              const edge = Math.min(viewfinderWidth, viewfinderHeight);
+              const size = Math.floor(edge * 0.7);
+              return { width: size, height: size };
+            },
+          },
+          (decodedText) => {
+            if (cancelled || disabledRef.current) return;
+            const value = decodedText.trim();
+            if (!value || value === lastScanRef.current) return;
+            lastScanRef.current = value;
+            onScanRef.current(value);
+          },
+          () => {
+            /* expected when no QR in frame */
+          },
+        );
 
-        if (BarcodeDetectorCtor) {
-          const detector = new BarcodeDetectorCtor({ formats: ["qr_code"] });
-
-          intervalId = setInterval(async () => {
-            if (!videoRef.current || cancelled) return;
-            try {
-              const codes = await detector.detect(videoRef.current);
-              const value = codes[0]?.rawValue;
-              if (value && value !== lastScanRef.current) {
-                lastScanRef.current = value;
-                onScan(value);
-              }
-            } catch {
-              /* frame not ready */
-            }
-          }, 400);
-        } else {
-          setCameraError("QR detection not supported in this browser — use manual entry.");
+        if (!cancelled) {
+          setCameraReady(true);
+          setCameraError(null);
         }
-      } catch {
-        setCameraSupported(false);
-        setCameraError("Camera permission denied or unavailable.");
+      } catch (err) {
+        if (!cancelled) {
+          setCameraReady(false);
+          setCameraError(mapCameraError(err));
+        }
       }
     }
 
@@ -85,28 +116,31 @@ export function QrScanner({ onScan, disabled }: Props) {
 
     return () => {
       cancelled = true;
-      if (intervalId) clearInterval(intervalId);
-      stopCamera();
+      setCameraReady(false);
+
+      if (!scanner) return;
+
+      const instance = scanner;
+      const stopPromise = instance.isScanning ? instance.stop() : Promise.resolve();
+      stopPromise
+        .then(() => instance.clear())
+        .catch(() => {});
     };
-  }, [disabled, onScan, stopCamera]);
+  }, [readerId, disabled]);
 
   return (
     <div className="space-y-2">
       <div className="relative aspect-square w-full max-w-sm overflow-hidden rounded-lg border bg-black">
-        <video
-          id={videoId}
-          ref={videoRef}
-          className="h-full w-full object-cover"
-          playsInline
-          muted
+        <div
+          id={readerId}
+          className="h-full w-full [&_video]:h-full [&_video]:w-full [&_video]:object-cover"
         />
-        {cameraSupported === false && (
-          <div className="absolute inset-0 flex items-center justify-center bg-neutral-900/80 p-4 text-center text-sm text-white">
-            Camera unavailable — paste QR payload below.
+        {!cameraReady && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-neutral-900/80 p-4 text-center text-sm text-white">
+            {cameraError ?? "Starting camera…"}
           </div>
         )}
       </div>
-      {cameraError && <p className="text-sm text-amber-700">{cameraError}</p>}
     </div>
   );
 }
