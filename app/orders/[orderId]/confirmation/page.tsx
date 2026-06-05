@@ -2,6 +2,7 @@
 
 import { use, useEffect, useState } from "react";
 import { apiGet, apiPost } from "@/lib/api/client";
+import { TicketQr } from "@/components/tickets/ticket-qr";
 import type { CheckoutStatusResponse, OrderConfirmationResponse } from "@/types/api";
 
 type Props = { params: Promise<{ orderId: string }> };
@@ -84,7 +85,13 @@ export default function ConfirmationPage({ params }: Props) {
             <div key={t.id} className="rounded border p-3">
               <p className="font-medium">{t.ticketTypeName}</p>
               <p className="text-sm text-neutral-600">{t.holderName}</p>
-              <p className="mt-2 break-all font-mono text-xs">{t.qrPayload}</p>
+              <div className="mt-3">
+                <TicketQr value={t.qrPayload} size={200} />
+              </div>
+              <details className="mt-2">
+                <summary className="cursor-pointer text-xs text-neutral-500">Show token</summary>
+                <p className="mt-1 break-all font-mono text-xs text-neutral-600">{t.qrPayload}</p>
+              </details>
             </div>
           ))}
         </div>
