@@ -66,8 +66,8 @@ export default function ConfirmationPage({ params }: Props) {
   }, [orderId, phone]);
 
   return (
-    <main className="mx-auto max-w-lg p-8">
-      <h1 className="text-2xl font-bold">Your tickets</h1>
+    <main className="confirmation-page mx-auto max-w-lg p-8 print:max-w-none print:p-0">
+      <h1 className="text-2xl font-bold print:text-3xl">Your tickets</h1>
       {error && <p className="mt-4 text-red-600">{error}</p>}
       {phone === null && <p className="mt-4">Loading…</p>}
       {phone !== null && !error && !status && <p className="mt-4">Checking payment…</p>}
@@ -78,21 +78,23 @@ export default function ConfirmationPage({ params }: Props) {
         <p className="mt-4 text-neutral-600">Loading tickets…</p>
       )}
       {order && (
-        <div className="mt-6 space-y-4">
-          <p className="font-medium">{order.eventTitle}</p>
-          <p className="text-sm text-neutral-600">Total: {order.totalAmount} SYP</p>
+        <div className="mt-6 space-y-4 print:space-y-8">
+          <p className="font-medium print:text-lg">{order.eventTitle}</p>
+          <p className="text-sm text-neutral-600 print:text-base">Total: {order.totalAmount} SYP</p>
           {order.tickets.map((t) => (
-            <div key={t.id} className="rounded border p-3">
-              <p className="font-medium">{t.ticketTypeName}</p>
-              <p className="text-sm text-neutral-600">{t.holderName}</p>
-              <div className="mt-3">
-                <TicketQr value={t.qrPayload} size={200} />
+            <article
+              key={t.id}
+              className="ticket-card rounded border p-4 print:break-inside-avoid print:border-2 print:border-black print:p-6"
+            >
+              <p className="font-medium print:text-lg">{t.ticketTypeName}</p>
+              <p className="text-sm text-neutral-600 print:text-base">{t.holderName}</p>
+              <div className="mt-4 flex flex-col items-start gap-3">
+                <TicketQr value={t.qrPayload} size={220} />
+                <p className="max-w-full break-all font-mono text-xs text-neutral-600 print:text-sm">
+                  {t.qrPayload}
+                </p>
               </div>
-              <details className="mt-2">
-                <summary className="cursor-pointer text-xs text-neutral-500">Show token</summary>
-                <p className="mt-1 break-all font-mono text-xs text-neutral-600">{t.qrPayload}</p>
-              </details>
-            </div>
+            </article>
           ))}
         </div>
       )}

@@ -24,3 +24,30 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+@media print {
+  :root {
+    --background: #ffffff;
+    --foreground: #000000;
+  }
+
+  body {
+    background: #ffffff;
+    color: #000000;
+  }
+
+  .confirmation-page {
+    margin: 0;
+    padding: 0;
+  }
+
+  .ticket-card {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  .ticket-qr svg {
+    max-width: 100%;
+    height: auto;
+  }
+}
