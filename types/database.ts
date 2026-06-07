@@ -333,6 +333,7 @@ export interface Database {
           status: OrderStatus;
           tickets_issued: boolean;
           idempotency_key: string;
+          payment_reference_code: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -345,6 +346,7 @@ export interface Database {
           status?: OrderStatus;
           tickets_issued?: boolean;
           idempotency_key: string;
+          payment_reference_code?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -357,6 +359,8 @@ export interface Database {
           order_id: string;
           provider: string;
           provider_payment_id: string;
+          reference_code: string | null;
+          provider_transaction_id: string | null;
           amount: number;
           currency: string;
           status: PaymentStatus;
@@ -371,6 +375,8 @@ export interface Database {
           order_id: string;
           provider?: string;
           provider_payment_id: string;
+          reference_code?: string | null;
+          provider_transaction_id?: string | null;
           amount: number;
           currency?: string;
           status?: PaymentStatus;

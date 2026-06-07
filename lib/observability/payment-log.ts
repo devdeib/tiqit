@@ -9,7 +9,10 @@ export type PaymentLogEvent =
   | "payment_failed"
   | "payment_completed"
   | "payment_fulfilled"
-  | "payment_duplicate_webhook";
+  | "payment_duplicate_webhook"
+  | "payment_status_polled"
+  | "payment_verification_pending"
+  | "payment_verified";
 
 export type PaymentLogContext = {
   event: PaymentLogEvent;

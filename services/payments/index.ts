@@ -27,3 +27,8 @@ export {
   type PaymentRecoveryContext,
   type PaymentRecoveryPlan,
 } from "@/services/payments/recovery";
+
+export {
+  syncPendingPaymentFromProvider,
+  type PollSyncResult,
+} from "@/services/payments/poll-sync";

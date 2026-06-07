@@ -3,9 +3,19 @@ import { AppError } from "@/lib/errors";
 import { assertGuestOwnsOrder, assertGuestOwnsReservation } from "@/lib/guest-ownership";
 import { getAppBaseUrl } from "@/lib/app-url";
 import { logPaymentEvent } from "@/lib/observability/payment-log";
-import { createShamCashSession, isShamCashMockMode } from "@/services/sham-cash";
+import {
+  createShamCashSession,
+  generatePaymentReferenceCode,
+  isShamCashMockMode,
+} from "@/services/sham-cash";
+import { findPaymentTransaction } from "@/services/sham-cash/transaction-matcher";
+import { processPaymentWebhook } from "@/services/fulfillment.service";
 import { getReservation } from "@/services/reservations.service";
-import type { CheckoutResponse, CheckoutStatusResponse } from "@/types/api";
+import type {
+  CheckoutResponse,
+  CheckoutStatusResponse,
+  CheckoutVerifyPaymentResponse,
+} from "@/types/api";
 
 export async function createCheckout(input: {
   reservationId: string;
@@ -139,20 +149,27 @@ export async function createCheckout(input: {
     .eq("id", reservation.customer_id)
     .single();
 
+  const referenceCode = generatePaymentReferenceCode();
+
   const session = await createShamCashSession({
     orderId: order.id,
     amount: Number(order.total_amount),
     currency: "SYP",
     customerPhone: guest?.phone ?? "",
     description: `Order ${order.id}`,
+    referenceCode,
   });
+
+  const providerPaymentId = session.mockMode ? session.providerPaymentId : referenceCode;
 
   const { data: payment, error: payError } = await supabase
     .from("payments")
     .insert({
       order_id: order.id,
-      provider_payment_id: session.providerPaymentId,
+      provider_payment_id: providerPaymentId,
+      reference_code: referenceCode,
       amount: order.total_amount,
+      currency: "SYP",
       status: "pending",
     })
     .select("id")
@@ -162,11 +179,16 @@ export async function createCheckout(input: {
     throw new AppError("Failed to create payment", { code: "DATABASE", cause: payError });
   }
 
+  await supabase
+    .from("orders")
+    .update({ payment_reference_code: referenceCode })
+    .eq("id", order.id);
+
   logPaymentEvent({
     event: "checkout_session_created",
     orderId: order.id,
     paymentId: payment.id,
-    providerPaymentId: session.providerPaymentId,
+    providerPaymentId,
     provider: "sham_cash",
     mode: session.mockMode ? "mock" : "live",
     amount: Number(order.total_amount),
@@ -179,6 +201,7 @@ export async function createCheckout(input: {
     totalAmount: Number(order.total_amount),
     redirectUrl: session.redirectUrl,
     mockMode: session.mockMode,
+    referenceCode: session.mockMode ? undefined : referenceCode,
   };
 }
 
@@ -229,7 +252,7 @@ async function resumeCheckout(
 
   const { data: pendingPayment } = await supabase
     .from("payments")
-    .select("id, provider_payment_id")
+    .select("id, provider_payment_id, reference_code")
     .eq("order_id", orderId)
     .eq("status", "pending")
     .order("created_at", { ascending: false })
@@ -238,6 +261,7 @@ async function resumeCheckout(
 
   let paymentId = pendingPayment?.id ?? "";
   let providerPaymentId = pendingPayment?.provider_payment_id;
+  let referenceCode = pendingPayment?.reference_code ?? undefined;
 
   if (!pendingPayment) {
     const { data: failedPayment } = await supabase
@@ -260,7 +284,7 @@ async function resumeCheckout(
         })
         .eq("id", failedPayment.id)
         .eq("status", "failed")
-        .select("id, provider_payment_id")
+        .select("id, provider_payment_id, reference_code")
         .single();
 
       if (reopenError || !reopened) {
@@ -272,6 +296,7 @@ async function resumeCheckout(
 
       paymentId = reopened.id;
       providerPaymentId = reopened.provider_payment_id;
+      referenceCode = reopened.reference_code ?? undefined;
     }
   }
 
@@ -288,35 +313,43 @@ async function resumeCheckout(
       .eq("id", guest?.customer_id ?? "")
       .maybeSingle();
 
+    const newReferenceCode = generatePaymentReferenceCode();
+
     const session = await createShamCashSession({
       orderId: order.id,
       amount: Number(order.total_amount),
       currency: "SYP",
       customerPhone: customer?.phone ?? "",
       description: `Order ${order.id}`,
+      referenceCode: newReferenceCode,
     });
+
+    const providerId = session.mockMode ? session.providerPaymentId : newReferenceCode;
 
     const { data: created, error: payError } = await supabase
       .from("payments")
       .insert({
         order_id: order.id,
-        provider_payment_id: session.providerPaymentId,
+        provider_payment_id: providerId,
+        reference_code: newReferenceCode,
         amount: order.total_amount,
+        currency: "SYP",
         status: "pending",
       })
-      .select("id, provider_payment_id")
+      .select("id, provider_payment_id, reference_code")
       .single();
 
     if (payError || !created) {
       if (payError?.code === "23505") {
         const { data: existingPayment } = await supabase
           .from("payments")
-          .select("id, provider_payment_id")
-          .eq("provider_payment_id", session.providerPaymentId)
+          .select("id, provider_payment_id, reference_code")
+          .eq("provider_payment_id", providerId)
           .maybeSingle();
         if (existingPayment) {
           paymentId = existingPayment.id;
           providerPaymentId = existingPayment.provider_payment_id;
+          referenceCode = existingPayment.reference_code ?? undefined;
         } else {
           throw new AppError("Failed to create payment for order", {
             code: "DATABASE",
@@ -332,6 +365,12 @@ async function resumeCheckout(
     } else {
       paymentId = created.id;
       providerPaymentId = created.provider_payment_id;
+      referenceCode = created.reference_code ?? newReferenceCode;
+
+      await supabase
+        .from("orders")
+        .update({ payment_reference_code: referenceCode })
+        .eq("id", order.id);
     }
   }
 
@@ -346,6 +385,7 @@ async function resumeCheckout(
       ? `${appUrl}/checkout/mock-pay?orderId=${orderId}`
       : `${appUrl}/checkout/redirect?orderId=${orderId}`,
     mockMode,
+    referenceCode: mockMode ? undefined : referenceCode,
   };
 }
 
@@ -391,5 +431,143 @@ export async function getCheckoutStatus(
     paymentStatus,
     ticketsIssued: order.tickets_issued,
     ticketCount: count ?? 0,
+  };
+}
+
+export async function verifyCheckoutPayment(
+  orderId: string,
+  phone: string,
+): Promise<CheckoutVerifyPaymentResponse> {
+  await assertGuestOwnsOrder(orderId, phone);
+
+  if (isShamCashMockMode()) {
+    throw new AppError("Mock checkout uses simulate-payment, not transaction verification", {
+      code: "CONFLICT",
+      status: 409,
+      expose: true,
+    });
+  }
+
+  const supabase = createAdminSupabaseClient();
+
+  const { data: order, error: orderError } = await supabase
+    .from("orders")
+    .select("id, status, total_amount")
+    .eq("id", orderId)
+    .maybeSingle();
+
+  if (orderError || !order) {
+    throw new AppError("Order not found", { code: "NOT_FOUND", status: 404, expose: true });
+  }
+
+  if (order.status === "confirmed") {
+    const { data: completedPayment } = await supabase
+      .from("payments")
+      .select("provider_transaction_id, reference_code")
+      .eq("order_id", orderId)
+      .eq("status", "completed")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    return {
+      orderId,
+      verified: true,
+      alreadyProcessed: true,
+      referenceCode: completedPayment?.reference_code ?? undefined,
+      transactionId: completedPayment?.provider_transaction_id ?? undefined,
+    };
+  }
+
+  const { data: payment, error: paymentError } = await supabase
+    .from("payments")
+    .select("id, reference_code, amount, currency, status, provider_payment_id, created_at")
+    .eq("order_id", orderId)
+    .eq("status", "pending")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (paymentError) {
+    throw new AppError("Failed to load payment", { code: "DATABASE", cause: paymentError });
+  }
+
+  if (!payment?.reference_code) {
+    throw new AppError(
+      "No pending payment with reference code for this order. Go back to checkout and click Pay again.",
+      { code: "NOT_FOUND", status: 404, expose: true },
+    );
+  }
+
+  const transaction = await findPaymentTransaction({
+    id: payment.id,
+    order_id: orderId,
+    reference_code: payment.reference_code,
+    amount: Number(payment.amount),
+    currency: payment.currency,
+    created_at: payment.created_at,
+  });
+
+  if (!transaction) {
+    logPaymentEvent({
+      event: "payment_verification_pending",
+      orderId,
+      paymentId: payment.id,
+      provider: "sham_cash",
+      mode: "live",
+    });
+
+    return {
+      orderId,
+      verified: false,
+      referenceCode: payment.reference_code,
+    };
+  }
+
+  const providerEventId = `txn:${transaction.transaction_id}`;
+  const rawBody = JSON.stringify({
+    event_id: providerEventId,
+    payment_id: payment.provider_payment_id,
+    order_id: orderId,
+    status: "completed",
+    amount: transaction.amount,
+    transaction_id: transaction.transaction_id,
+    reference_code: payment.reference_code,
+    source: "transaction_verify",
+  });
+
+  const result = await processPaymentWebhook(
+    {
+      providerEventId,
+      providerPaymentId: payment.provider_payment_id,
+      orderId,
+      status: "completed",
+      amount: transaction.amount,
+    },
+    rawBody,
+  );
+
+  await supabase
+    .from("payments")
+    .update({ provider_transaction_id: transaction.transaction_id })
+    .eq("id", payment.id)
+    .is("provider_transaction_id", null);
+
+  logPaymentEvent({
+    event: result.alreadyProcessed ? "payment_duplicate_webhook" : "payment_verified",
+    orderId: result.orderId,
+    paymentId: payment.id,
+    providerPaymentId: payment.provider_payment_id,
+    provider: "sham_cash",
+    mode: "live",
+    alreadyProcessed: result.alreadyProcessed,
+  });
+
+  return {
+    orderId: result.orderId,
+    verified: true,
+    alreadyProcessed: result.alreadyProcessed,
+    referenceCode: payment.reference_code,
+    transactionId: transaction.transaction_id,
   };
 }

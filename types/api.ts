@@ -53,6 +53,15 @@ export type CheckoutResponse = {
   totalAmount: number;
   redirectUrl: string;
   mockMode: boolean;
+  referenceCode?: string;
+};
+
+export type CheckoutVerifyPaymentResponse = {
+  orderId: string;
+  verified: boolean;
+  alreadyProcessed?: boolean;
+  referenceCode?: string;
+  transactionId?: string;
 };
 
 export type CheckoutStatusResponse = {

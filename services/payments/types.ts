@@ -12,7 +12,7 @@ export type PaymentLifecycleStatus =
   | "failed"
   | "cancelled";
 
-export type PaymentConfirmationMode = "mock" | "webhook" | "api_poll";
+export type PaymentConfirmationMode = "mock" | "webhook" | "api_poll" | "transaction_verify";
 
 export type PaymentSessionInput = {
   orderId: string;
@@ -49,6 +49,5 @@ export interface PaymentProvider {
   createSession(input: PaymentSessionInput): Promise<PaymentSessionResult>;
   verifyWebhookSignature(rawBody: string, signatureHeader: string | null): boolean;
   parseWebhookPayload(rawBody: string): ParsedWebhookPayload;
-  /** Optional — required when confirmation mode is api_poll */
-  getPaymentStatus?(providerPaymentId: string): Promise<PaymentStatusResult>;
+  getPaymentStatus(providerPaymentId: string): Promise<PaymentStatusResult>;
 }

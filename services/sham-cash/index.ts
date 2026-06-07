@@ -13,10 +13,31 @@ import type {
 export type {
   PaymentProviderMode,
   ShamCashPaymentAdapter,
+  ShamCashPaymentStatusResult,
   ShamCashSessionInput,
   ShamCashSessionResult,
   ShamCashWebhookPayload,
 } from "@/services/sham-cash/types";
+
+export {
+  ShamCashConfigurationError,
+  ShamCashEndpointNotConfiguredError,
+  ShamCashError,
+  ShamCashNetworkError,
+  ShamCashProviderError,
+  ShamCashTimeoutError,
+} from "@/services/sham-cash/errors";
+export { SHAM_CASH_DOCUMENTED_API_BASE_URL } from "@/services/sham-cash/constants";
+export { resolveShamCashApiBaseUrl } from "@/services/sham-cash/config";
+export { buildShamCashAuthHeaders } from "@/services/sham-cash/auth";
+export { parseShamCashErrorEnvelope } from "@/services/sham-cash/parse-error";
+export { shamCashApiRequest, isRetryableShamCashError } from "@/services/sham-cash/request";
+export { buildPollEventId, buildPollWebhookPayload } from "@/services/sham-cash/poll-payload";
+export { mapProviderStatusResponse } from "@/services/sham-cash/map-response";
+export { createShamCashHttpClient, ShamCashHttpClient } from "@/services/sham-cash/http-client";
+export { generatePaymentReferenceCode, isPaymentReferenceCode } from "@/services/sham-cash/reference-code";
+export { findPaymentTransaction } from "@/services/sham-cash/transaction-matcher";
+export type { PaymentForMatching, ShamCashTransaction } from "@/services/sham-cash/transaction-matcher";
 
 let cachedAdapter: ShamCashPaymentAdapter | null = null;
 
@@ -40,6 +61,11 @@ export function getShamCashAdapter(): ShamCashPaymentAdapter {
   return cachedAdapter;
 }
 
+/** Test hook — reset cached adapter after env changes. */
+export function resetShamCashAdapterCache(): void {
+  cachedAdapter = null;
+}
+
 export function isShamCashMockMode(): boolean {
   return getShamCashAdapter().mode === "mock";
 }
@@ -50,18 +76,22 @@ export function isShamCashWebhooksConfigured(): boolean {
 }
 
 /** How paid orders are confirmed after checkout. */
-export type ShamCashConfirmationMode = "mock" | "webhook" | "api_poll";
+export type ShamCashConfirmationMode = "mock" | "webhook" | "api_poll" | "transaction_verify";
 
 export function getShamCashConfirmationMode(): ShamCashConfirmationMode {
   if (resolveShamCashMode() === "mock") return "mock";
   if (isShamCashWebhooksConfigured()) return "webhook";
-  return "api_poll";
+  return "transaction_verify";
 }
 
 export async function createShamCashSession(
   input: ShamCashSessionInput,
 ): Promise<ShamCashSessionResult> {
   return getShamCashAdapter().createSession(input);
+}
+
+export async function getShamCashPaymentStatus(providerPaymentId: string) {
+  return getShamCashAdapter().getPaymentStatus(providerPaymentId);
 }
 
 export function verifyShamCashWebhookSignature(

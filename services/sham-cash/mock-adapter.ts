@@ -29,4 +29,11 @@ export class MockShamCashAdapter implements ShamCashPaymentAdapter {
     const appEnv = getAppEnvironment();
     return appEnv === "development" || appEnv === "staging";
   }
+
+  async getPaymentStatus(providerPaymentId: string) {
+    return {
+      providerPaymentId,
+      status: "pending" as const,
+    };
+  }
 }
