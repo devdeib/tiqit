@@ -90,9 +90,11 @@ export type ManualPaymentCheckoutContext = {
 
 export type ManualPaymentSubmitResponse = {
   orderId: string;
-  orderStatus: "payment_pending";
+  verified: boolean;
+  orderStatus: string;
   referenceCode: string;
-  submittedAt: string;
+  verificationMessage?: string;
+  submittedAt?: string;
 };
 
 export type OrderConfirmationResponse = {

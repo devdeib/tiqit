@@ -3,7 +3,6 @@ import Link from "next/link";
 const links = [
   { href: "/admin", label: "Dashboard" },
   { href: "/admin/events/pending", label: "Pending events" },
-  { href: "/admin/payments", label: "Payments" },
   { href: "/admin/settings/payments", label: "Payment settings" },
   { href: "/admin/users", label: "Users" },
   { href: "/admin/webhooks", label: "Webhooks" },

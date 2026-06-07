@@ -26,6 +26,8 @@ const serverEnvSchema = z.object({
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
   HMAC_SECRET_V1: optionalEnvString(16),
   SHAM_CASH_API_KEY: optionalEnvString(1),
+  /** Alias for SHAM_CASH_API_KEY (server-only, never exposed to client). */
+  SHAMCASH_API_TOKEN: optionalEnvString(1),
   SHAM_CASH_WEBHOOK_SECRET: optionalEnvString(1),
   SHAM_CASH_MOCK: z.preprocess(
     (val) => (typeof val === "string" && val.trim() === "" ? undefined : val),

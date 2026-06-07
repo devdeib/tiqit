@@ -1,5 +1,5 @@
+import { resolveShamCashApiBaseUrl, getShamCashApiToken } from "./config";
 import { getServerEnv } from "@/lib/env";
-import { resolveShamCashApiBaseUrl } from "./config";
 import { createShamCashHttpClient } from "./http-client";
 import {
   extractTransactionsFromResponse,
@@ -23,6 +23,8 @@ export type ShamCashTransaction = {
   occurred_at: string;
   sender_name: string;
   sender_address: string;
+  receiver_account: string;
+  direction: "incoming" | "outgoing" | "unknown";
   note: string;
 };
 
@@ -63,7 +65,7 @@ async function fetchTransactionsFromProvider(
 ): Promise<ShamCashTransaction[]> {
   const client = createShamCashHttpClient(
     httpClientDeps ?? {
-      getApiKey: () => getServerEnv().SHAM_CASH_API_KEY,
+      getApiKey: () => getShamCashApiToken(),
       getBaseUrl: () => resolveShamCashApiBaseUrl(getServerEnv().SHAM_CASH_API_BASE_URL),
     },
   );

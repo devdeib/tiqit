@@ -5,8 +5,11 @@ import { AppError } from "@/lib/errors";
 import { assertGuestOwnsOrder } from "@/lib/guest-ownership";
 import { logPaymentEvent } from "@/lib/observability/payment-log";
 import { uploadPaymentProofImage } from "@/lib/storage/payment-assets";
-import { getPublicShamCashPaymentSettings } from "@/services/payment-settings.service";
 import { processPaymentWebhook } from "@/services/fulfillment.service";
+import { getPlatformPaymentSettings } from "@/services/payment-settings.service";
+import {
+  verifySubmittedTransaction,
+} from "@/services/sham-cash/transaction-verifier";
 import type { ManualPaymentSubmitResponse, PublicShamCashPaymentSettings } from "@/types/api";
 
 export async function getManualPaymentCheckoutContext(orderId: string, phone: string): Promise<{
@@ -38,7 +41,7 @@ export async function getManualPaymentCheckoutContext(orderId: string, phone: st
     .limit(1)
     .maybeSingle();
 
-  const shamCash = await getPublicShamCashPaymentSettings();
+  const settings = await getPlatformPaymentSettings();
 
   return {
     orderReferenceCode: payment?.reference_code ?? order.payment_reference_code ?? "",
@@ -46,7 +49,12 @@ export async function getManualPaymentCheckoutContext(orderId: string, phone: st
     currency: payment?.currency ?? "SYP",
     orderStatus: order.status,
     paymentStatus: payment?.status ?? null,
-    shamCash,
+    shamCash: {
+      accountId: settings.sham_cash_account_id,
+      accountName: settings.sham_cash_account_name,
+      qrImageUrl: settings.sham_cash_qr_image_url,
+      instructions: settings.payment_instructions,
+    },
   };
 }
 
@@ -54,11 +62,12 @@ export async function submitManualPaymentProof(input: {
   orderId: string;
   phone: string;
   transactionId: string;
-  proofFile: File;
+  proofFile?: File | null;
 }): Promise<ManualPaymentSubmitResponse> {
   await assertGuestOwnsOrder(input.orderId, input.phone);
 
   const supabase = createAdminSupabaseClient();
+  const transactionId = input.transactionId.trim();
 
   const { data: order, error: orderError } = await supabase
     .from("orders")
@@ -74,17 +83,9 @@ export async function submitManualPaymentProof(input: {
     throw new AppError("Order is already confirmed", { code: "CONFLICT", status: 409, expose: true });
   }
 
-  if (order.status === "payment_pending") {
-    throw new AppError("Payment proof already submitted and awaiting review", {
-      code: "CONFLICT",
-      status: 409,
-      expose: true,
-    });
-  }
-
   const { data: payment, error: paymentError } = await supabase
     .from("payments")
-    .select("id, status, provider_payment_id, reference_code, amount")
+    .select("id, status, provider_payment_id, reference_code, amount, currency, created_at")
     .eq("order_id", input.orderId)
     .in("status", ["pending", "rejected"])
     .order("created_at", { ascending: false })
@@ -103,117 +104,97 @@ export async function submitManualPaymentProof(input: {
     });
   }
 
-  const proofImageUrl = await uploadPaymentProofImage(input.orderId, payment.id, input.proofFile);
-  const submittedAt = new Date().toISOString();
-
-  const { error: paymentUpdateError } = await supabase
+  const { data: existingUse } = await supabase
     .from("payments")
-    .update({
-      status: "pending",
-      payment_method: "sham_cash_manual",
-      provider_transaction_id: input.transactionId.trim(),
-      proof_image_url: proofImageUrl,
-      submitted_at: submittedAt,
-      verified_at: null,
-      verified_by: null,
-    })
-    .eq("id", payment.id);
-
-  if (paymentUpdateError) {
-    throw new AppError("Failed to save payment proof", {
-      code: "DATABASE",
-      cause: paymentUpdateError,
-    });
-  }
-
-  const { error: orderUpdateError } = await supabase
-    .from("orders")
-    .update({ status: "payment_pending" })
-    .eq("id", input.orderId)
-    .in("status", ["pending"]);
-
-  if (orderUpdateError) {
-    throw new AppError("Failed to update order status", {
-      code: "DATABASE",
-      cause: orderUpdateError,
-    });
-  }
-
-  logPaymentEvent({
-    event: "payment_proof_submitted",
-    orderId: input.orderId,
-    paymentId: payment.id,
-    providerPaymentId: payment.provider_payment_id,
-    provider: "sham_cash",
-    mode: "live",
-  });
-
-  return {
-    orderId: input.orderId,
-    orderStatus: "payment_pending",
-    referenceCode: payment.reference_code ?? "",
-    submittedAt,
-  };
-}
-
-export async function approveManualPayment(input: {
-  paymentId: string;
-  adminUserId: string;
-}): Promise<{ orderId: string; alreadyProcessed: boolean }> {
-  const supabase = createAdminSupabaseClient();
-
-  const { data: payment, error } = await supabase
-    .from("payments")
-    .select(
-      "id, order_id, status, provider_payment_id, provider_transaction_id, amount, proof_image_url, reference_code",
-    )
-    .eq("id", input.paymentId)
+    .select("id, order_id")
+    .eq("provider_transaction_id", transactionId)
+    .neq("id", payment.id)
     .maybeSingle();
 
-  if (error || !payment) {
-    throw new AppError("Payment not found", { code: "NOT_FOUND", status: 404, expose: true });
+  if (existingUse) {
+    return buildVerificationFailureResponse(input.orderId, payment.reference_code ?? "", {
+      ok: false,
+      reason: "This transaction ID has already been used for another order.",
+    });
   }
 
-  if (!payment.proof_image_url) {
-    throw new AppError("Payment has no submitted proof", {
-      code: "VALIDATION_ERROR",
-      status: 400,
+  const settings = await getPlatformPaymentSettings();
+  if (!settings.sham_cash_account_id.trim()) {
+    throw new AppError("Sham Cash account is not configured", {
+      code: "CONFIG",
+      status: 503,
       expose: true,
     });
   }
 
-  if (payment.status === "completed") {
-    return { orderId: payment.order_id, alreadyProcessed: true };
+  const verification = await verifySubmittedTransaction({
+    transactionId,
+    expectedAmount: Number(payment.amount),
+    expectedCurrency: payment.currency,
+    tiqitAccountId: settings.sham_cash_account_id,
+    paymentCreatedAt: payment.created_at,
+  });
+
+  let proofImageUrl: string | null = null;
+  if (input.proofFile && input.proofFile.size > 0) {
+    proofImageUrl = await uploadPaymentProofImage(input.orderId, payment.id, input.proofFile);
   }
 
-  if (payment.status === "rejected") {
-    throw new AppError("Cannot approve a rejected payment", {
-      code: "CONFLICT",
-      status: 409,
-      expose: true,
+  const submittedAt = new Date().toISOString();
+
+  if (!verification.ok) {
+    await supabase
+      .from("payments")
+      .update({
+        status: "pending",
+        payment_method: "sham_cash_manual",
+        provider_transaction_id: transactionId,
+        proof_image_url: proofImageUrl,
+        submitted_at: submittedAt,
+        raw_webhook_payload: {
+          verification_failed: true,
+          reason: verification.reason,
+          source: "transaction_verify_submit",
+        },
+      })
+      .eq("id", payment.id);
+
+    logPaymentEvent({
+      event: "payment_verification_pending",
+      orderId: input.orderId,
+      paymentId: payment.id,
+      providerPaymentId: payment.provider_payment_id,
+      provider: "sham_cash",
+      mode: "live",
     });
+
+    return buildVerificationFailureResponse(
+      input.orderId,
+      payment.reference_code ?? "",
+      verification,
+    );
   }
 
-  const providerEventId = `manual:${payment.id}:${input.adminUserId}`;
+  const providerEventId = `txn:${verification.transaction.transaction_id}`;
   const rawBody = JSON.stringify({
     event_id: providerEventId,
     payment_id: payment.provider_payment_id,
-    order_id: payment.order_id,
+    order_id: input.orderId,
     status: "completed",
-    amount: Number(payment.amount),
-    transaction_id: payment.provider_transaction_id,
+    amount: verification.transaction.amount,
+    transaction_id: verification.transaction.transaction_id,
     reference_code: payment.reference_code,
-    proof_image_url: payment.proof_image_url,
-    source: "manual_admin_approve",
+    receiver_account: verification.transaction.receiver_account,
+    source: "transaction_verify_submit",
   });
 
   const result = await processPaymentWebhook(
     {
       providerEventId,
       providerPaymentId: payment.provider_payment_id,
-      orderId: payment.order_id,
+      orderId: input.orderId,
       status: "completed",
-      amount: Number(payment.amount),
+      amount: verification.transaction.amount,
     },
     rawBody,
   );
@@ -221,8 +202,16 @@ export async function approveManualPayment(input: {
   await supabase
     .from("payments")
     .update({
-      verified_at: new Date().toISOString(),
-      verified_by: input.adminUserId,
+      provider_transaction_id: verification.transaction.transaction_id,
+      proof_image_url: proofImageUrl,
+      submitted_at: submittedAt,
+      verified_at: submittedAt,
+      verified_by: null,
+      payment_method: "sham_cash_manual",
+      raw_webhook_payload: {
+        verification_failed: false,
+        source: "transaction_verify_submit",
+      },
     })
     .eq("id", payment.id);
 
@@ -236,63 +225,25 @@ export async function approveManualPayment(input: {
     alreadyProcessed: result.alreadyProcessed,
   });
 
-  return { orderId: result.orderId, alreadyProcessed: result.alreadyProcessed };
+  return {
+    orderId: input.orderId,
+    verified: true,
+    orderStatus: "confirmed",
+    referenceCode: payment.reference_code ?? "",
+    submittedAt,
+  };
 }
 
-export async function rejectManualPayment(input: {
-  paymentId: string;
-  adminUserId: string;
-  reason?: string;
-}): Promise<{ orderId: string }> {
-  const supabase = createAdminSupabaseClient();
-
-  const { data: payment, error } = await supabase
-    .from("payments")
-    .select("id, order_id, status")
-    .eq("id", input.paymentId)
-    .maybeSingle();
-
-  if (error || !payment) {
-    throw new AppError("Payment not found", { code: "NOT_FOUND", status: 404, expose: true });
-  }
-
-  if (payment.status === "completed") {
-    throw new AppError("Cannot reject a completed payment", {
-      code: "CONFLICT",
-      status: 409,
-      expose: true,
-    });
-  }
-
-  const verifiedAt = new Date().toISOString();
-
-  const { error: paymentUpdateError } = await supabase
-    .from("payments")
-    .update({
-      status: "rejected",
-      verified_at: verifiedAt,
-      verified_by: input.adminUserId,
-      raw_webhook_payload: input.reason ? { reject_reason: input.reason } : null,
-    })
-    .eq("id", payment.id);
-
-  if (paymentUpdateError) {
-    throw new AppError("Failed to reject payment", { code: "DATABASE", cause: paymentUpdateError });
-  }
-
-  await supabase
-    .from("orders")
-    .update({ status: "pending" })
-    .eq("id", payment.order_id)
-    .eq("status", "payment_pending");
-
-  logPaymentEvent({
-    event: "payment_failed",
-    orderId: payment.order_id,
-    paymentId: payment.id,
-    provider: "sham_cash",
-    mode: "live",
-  });
-
-  return { orderId: payment.order_id };
+function buildVerificationFailureResponse(
+  orderId: string,
+  referenceCode: string,
+  verification: { ok: false; reason: string },
+): ManualPaymentSubmitResponse {
+  return {
+    orderId,
+    verified: false,
+    orderStatus: "pending",
+    referenceCode,
+    verificationMessage: verification.reason,
+  };
 }

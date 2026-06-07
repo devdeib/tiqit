@@ -63,23 +63,6 @@ function ManualPaymentContent() {
     }
   }, [status, orderId, router, getPhone]);
 
-  useEffect(() => {
-    if (!orderId || status?.paymentStatus === "completed") return;
-    if (context?.orderStatus !== "payment_pending") return;
-
-    const phone = getPhone();
-    if (!phone) return;
-
-    const interval = setInterval(() => {
-      const q = `?phone=${encodeURIComponent(phone)}`;
-      apiGet<{ status: CheckoutStatusResponse }>(`/api/checkout/${orderId}/status${q}`)
-        .then(({ status: s }) => setStatus(s))
-        .catch(() => {});
-    }, 15_000);
-
-    return () => clearInterval(interval);
-  }, [orderId, status?.paymentStatus, context?.orderStatus, getPhone]);
-
   if (!orderId) {
     return <p className="text-red-600">Missing order ID. Return to checkout and try again.</p>;
   }
@@ -97,9 +80,9 @@ function ManualPaymentContent() {
   }
 
   const phone = getPhone();
-  const awaitingReview = context.orderStatus === "payment_pending";
-  const wasRejected = status?.paymentStatus === "rejected";
   const shamCash = context.shamCash;
+  const alreadyPaid =
+    status?.paymentStatus === "completed" || context.orderStatus === "confirmed";
 
   return (
     <div className="mt-6 space-y-6">
@@ -149,26 +132,17 @@ function ManualPaymentContent() {
           Include reference <strong>{context.orderReferenceCode}</strong> in the payment note if
           possible.
         </li>
-        <li>Submit your transaction ID and payment screenshot below.</li>
+        <li>Enter your Sham Cash transaction ID below to verify payment instantly.</li>
       </ol>
-
-      {awaitingReview && (
-        <div className="rounded border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-          Payment proof submitted — awaiting admin review. This page will redirect automatically
-          once approved.
-        </div>
-      )}
-
-      {wasRejected && !awaitingReview && (
-        <div className="rounded border border-red-200 bg-red-50 p-4 text-sm text-red-800">
-          Your previous payment was rejected. Please check the details and submit again.
-        </div>
-      )}
 
       {error && <p className="text-sm text-red-600">{error}</p>}
 
-      {!awaitingReview && phone && (
-        <ManualPaymentForm orderId={orderId} phone={phone} onSubmitted={() => void loadContext()} />
+      {!alreadyPaid && phone && (
+        <ManualPaymentForm
+          orderId={orderId}
+          phone={phone}
+          onSubmitted={() => void loadContext()}
+        />
       )}
     </div>
   );

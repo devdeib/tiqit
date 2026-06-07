@@ -1,4 +1,10 @@
+import { getServerEnv } from "@/lib/env";
 import { SHAM_CASH_DOCUMENTED_API_BASE_URL } from "./constants";
+
+export function getShamCashApiToken(): string | undefined {
+  const env = getServerEnv();
+  return env.SHAM_CASH_API_KEY ?? env.SHAMCASH_API_TOKEN;
+}
 
 export function resolveShamCashApiBaseUrl(configured?: string | null): string {
   const trimmed = configured?.trim();

@@ -26,6 +26,8 @@ const matchingTx = {
   occurred_at: "2026-06-04T12:05:00.000Z",
   sender_name: "Guest",
   sender_address: "+963900000001",
+  receiver_account: "TIQIT-WALLET",
+  direction: "incoming",
   note: "TIQIT-ABCD1234",
 };
 

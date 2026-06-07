@@ -37,6 +37,11 @@ export { mapProviderStatusResponse } from "@/services/sham-cash/map-response";
 export { createShamCashHttpClient, ShamCashHttpClient } from "@/services/sham-cash/http-client";
 export { generatePaymentReferenceCode, isPaymentReferenceCode } from "@/services/sham-cash/reference-code";
 export { findPaymentTransaction } from "@/services/sham-cash/transaction-matcher";
+export {
+  verifySubmittedTransaction,
+  TRANSACTION_VERIFICATION_MESSAGES,
+} from "@/services/sham-cash/transaction-verifier";
+export { getShamCashApiToken } from "@/services/sham-cash/config";
 export type { PaymentForMatching, ShamCashTransaction } from "@/services/sham-cash/transaction-matcher";
 
 let cachedAdapter: ShamCashPaymentAdapter | null = null;

@@ -15,15 +15,6 @@ export async function POST(request: Request, { params }: Params) {
       const { orderId } = await params;
       const form = await request.formData();
 
-      const proofEntry = form.get("proof");
-      if (!(proofEntry instanceof File) || proofEntry.size === 0) {
-        throw new AppError("Payment proof image is required", {
-          code: "VALIDATION_ERROR",
-          status: 400,
-          expose: true,
-        });
-      }
-
       const parsed = submitManualPaymentFormSchema.safeParse({
         phone: form.get("phone"),
         transactionId: form.get("transactionId"),
@@ -37,13 +28,18 @@ export async function POST(request: Request, { params }: Params) {
         });
       }
 
-      assertAllowedPaymentImage(proofEntry);
+      let proofFile: File | null = null;
+      const proofEntry = form.get("proof");
+      if (proofEntry instanceof File && proofEntry.size > 0) {
+        assertAllowedPaymentImage(proofEntry);
+        proofFile = proofEntry;
+      }
 
       const result = await submitManualPaymentProof({
         orderId,
         phone: parsed.data.phone,
         transactionId: parsed.data.transactionId,
-        proofFile: proofEntry,
+        proofFile,
       });
 
       return jsonOk({ result });

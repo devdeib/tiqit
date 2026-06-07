@@ -12,7 +12,7 @@ export function ManualPaymentForm({
 }: {
   orderId: string;
   phone: string;
-  onSubmitted: () => void;
+  onSubmitted: (result: ManualPaymentSubmitResponse) => void;
 }) {
   const router = useRouter();
   const [transactionId, setTransactionId] = useState("");
@@ -22,10 +22,6 @@ export function ManualPaymentForm({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!proof) {
-      setError("Please upload a payment screenshot.");
-      return;
-    }
 
     setSubmitting(true);
     setError(null);
@@ -34,14 +30,20 @@ export function ManualPaymentForm({
       const form = new FormData();
       form.set("phone", phone);
       form.set("transactionId", transactionId.trim());
-      form.set("proof", proof);
+      if (proof) form.set("proof", proof);
 
-      await apiPostForm<{ result: ManualPaymentSubmitResponse }>(
+      const { result } = await apiPostForm<{ result: ManualPaymentSubmitResponse }>(
         `/api/checkout/${orderId}/submit-payment`,
         form,
       );
-      onSubmitted();
-      router.refresh();
+
+      if (result.verified) {
+        router.push(`/orders/${orderId}/confirmation?phone=${encodeURIComponent(phone)}`);
+        return;
+      }
+
+      setError(result.verificationMessage ?? "Payment could not be verified.");
+      onSubmitted(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Submission failed");
     } finally {
@@ -51,10 +53,10 @@ export function ManualPaymentForm({
 
   return (
     <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4 rounded-lg border p-4">
-      <h2 className="font-semibold">Submit payment proof</h2>
+      <h2 className="font-semibold">Submit transaction ID</h2>
       <p className="text-sm text-neutral-600">
-        After transferring, enter your Sham Cash transaction ID and upload a screenshot of the
-        payment.
+        After transferring, enter your Sham Cash transaction ID. We verify it automatically with
+        Sham Cash — no admin approval needed.
       </p>
 
       <label className="block text-sm">
@@ -70,10 +72,9 @@ export function ManualPaymentForm({
       </label>
 
       <label className="block text-sm">
-        <span className="font-medium">Payment screenshot</span>
+        <span className="font-medium">Payment screenshot (optional)</span>
         <input
           type="file"
-          required
           accept="image/jpeg,image/png,image/webp,image/gif"
           onChange={(e) => setProof(e.target.files?.[0] ?? null)}
           className="mt-1 block w-full text-sm"
@@ -87,7 +88,7 @@ export function ManualPaymentForm({
         disabled={submitting}
         className="rounded bg-black px-4 py-2 text-white disabled:opacity-50"
       >
-        {submitting ? "Submitting…" : "Submit payment proof"}
+        {submitting ? "Verifying payment…" : "Verify payment"}
       </button>
     </form>
   );
