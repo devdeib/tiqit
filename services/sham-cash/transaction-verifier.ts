@@ -16,6 +16,7 @@ import {
   parseShamCashTransaction,
   receiverAccountMatchesAny,
   transactionIdsMatch,
+  currencyToCoinId,
 } from "./transactions-api";
 import {
   amountsMatch,
@@ -30,6 +31,7 @@ export type TransactionVerificationInput = {
   expectedAmount: number;
   expectedCurrency: string;
   tiqitAccountId: string;
+  configuredApiAccountId?: string;
   paymentCreatedAt: string;
 };
 
@@ -46,7 +48,7 @@ export const TRANSACTION_VERIFICATION_MESSAGES = {
   outsideWindow: "Transaction is outside the valid payment window.",
   apiUnavailable: "Payment verification is temporarily unavailable. Please try again shortly.",
   invalidAccount:
-    "Sham Cash verification account is not configured. Set SHAM_CASH_API_ACCOUNT_ID or link an account on shamcash-api.com.",
+    "Sham Cash verification account is not configured. In Admin → Payment settings, select the verification account linked to your API key.",
 } as const;
 
 export async function verifySubmittedTransaction(
@@ -71,12 +73,17 @@ export async function verifySubmittedTransaction(
     if (deps.listTransactions) {
       transactions = await deps.listTransactions();
     } else {
-      apiAccountId = await resolveShamCashApiAccountId(displayAccountId, deps.httpClientDeps);
+      apiAccountId = await resolveShamCashApiAccountId(
+        displayAccountId,
+        deps.httpClientDeps,
+        input.configuredApiAccountId,
+      );
       transactions = await fetchTransactionsForVerification(
         apiAccountId,
         displayAccountId,
         transactionId,
         input.paymentCreatedAt,
+        input.expectedCurrency,
         deps.httpClientDeps,
       );
     }
@@ -148,6 +155,7 @@ async function fetchTransactionsForVerification(
   displayAccountId: string,
   transactionId: string,
   paymentCreatedAt: string,
+  expectedCurrency: string,
   httpClientDeps?: TransactionMatcherDeps["httpClientDeps"],
 ): Promise<ShamCashTransaction[]> {
   const client = createShamCashHttpClient(
@@ -157,16 +165,20 @@ async function fetchTransactionsForVerification(
     },
   );
 
+  const coinId = currencyToCoinId(expectedCurrency);
+
   const queries: ShamCashListTransactionsQuery[] = [
-    { accountId: apiAccountId, transactionIds: transactionId, limit: 20 },
+    { accountId: apiAccountId, transactionIds: transactionId, coinId, limit: 20 },
     {
       accountId: apiAccountId,
       transactionIds: transactionId,
+      coinId,
       startAt: formatTransactionQueryStart(paymentCreatedAt),
       limit: 20,
     },
     {
       accountId: apiAccountId,
+      coinId,
       startAt: formatTransactionQueryStart(paymentCreatedAt),
       limit: 100,
     },

@@ -110,9 +110,13 @@ export async function listShamCashAccounts(
 export async function resolveShamCashApiAccountId(
   displayAccountId?: string,
   httpClientDeps?: ShamCashHttpClientDeps,
+  configuredApiAccountId?: string,
 ): Promise<string> {
   const fromEnv = process.env.SHAM_CASH_API_ACCOUNT_ID?.trim();
   if (fromEnv) return fromEnv;
+
+  const fromSettings = configuredApiAccountId?.trim();
+  if (fromSettings) return fromSettings;
 
   const accounts = await listShamCashAccounts(httpClientDeps);
   if (!accounts.length) {

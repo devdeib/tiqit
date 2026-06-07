@@ -12,6 +12,7 @@ export default async function AdminPaymentSettingsPage() {
   const row = await getPlatformPaymentSettings();
   const settings: AdminPaymentSettings = {
     shamCashAccountId: row.sham_cash_account_id,
+    shamCashApiAccountId: row.sham_cash_api_account_id,
     shamCashAccountName: row.sham_cash_account_name,
     shamCashQrImageUrl: row.sham_cash_qr_image_url,
     paymentInstructions: row.payment_instructions,

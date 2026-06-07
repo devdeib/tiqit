@@ -132,6 +132,7 @@ export async function submitManualPaymentProof(input: {
     expectedAmount: Number(payment.amount),
     expectedCurrency: payment.currency,
     tiqitAccountId: settings.sham_cash_account_id,
+    configuredApiAccountId: settings.sham_cash_api_account_id,
     paymentCreatedAt: payment.created_at,
   });
 

@@ -12,6 +12,7 @@ const DEFAULT_INSTRUCTIONS =
 export type PlatformPaymentSettingsRow = {
   id: string;
   sham_cash_account_id: string;
+  sham_cash_api_account_id: string;
   sham_cash_account_name: string;
   sham_cash_qr_image_url: string | null;
   payment_instructions: string;
@@ -36,6 +37,7 @@ export async function getPlatformPaymentSettings(): Promise<PlatformPaymentSetti
   return {
     id: SETTINGS_ROW_ID,
     sham_cash_account_id: "",
+    sham_cash_api_account_id: "",
     sham_cash_account_name: "",
     sham_cash_qr_image_url: null,
     payment_instructions: DEFAULT_INSTRUCTIONS,
@@ -51,6 +53,7 @@ export async function getPublicShamCashPaymentSettings(): Promise<PublicShamCash
 
 export async function updatePlatformPaymentSettings(input: {
   shamCashAccountId: string;
+  shamCashApiAccountId?: string;
   shamCashAccountName: string;
   paymentInstructions: string;
   shamCashQrImageUrl?: string | null;
@@ -62,6 +65,7 @@ export async function updatePlatformPaymentSettings(input: {
     .upsert({
       id: SETTINGS_ROW_ID,
       sham_cash_account_id: input.shamCashAccountId.trim(),
+      sham_cash_api_account_id: input.shamCashApiAccountId?.trim() ?? "",
       sham_cash_account_name: input.shamCashAccountName.trim(),
       payment_instructions: input.paymentInstructions.trim() || DEFAULT_INSTRUCTIONS,
       sham_cash_qr_image_url: input.shamCashQrImageUrl ?? null,

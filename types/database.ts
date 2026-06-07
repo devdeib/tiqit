@@ -403,6 +403,7 @@ export interface Database {
         Row: {
           id: string;
           sham_cash_account_id: string;
+          sham_cash_api_account_id: string;
           sham_cash_account_name: string;
           sham_cash_qr_image_url: string | null;
           payment_instructions: string;
@@ -412,6 +413,7 @@ export interface Database {
         Insert: {
           id?: string;
           sham_cash_account_id?: string;
+          sham_cash_api_account_id?: string;
           sham_cash_account_name?: string;
           sham_cash_qr_image_url?: string | null;
           payment_instructions?: string;

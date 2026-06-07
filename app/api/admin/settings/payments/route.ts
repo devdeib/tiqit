@@ -13,6 +13,7 @@ export const dynamic = "force-dynamic";
 function mapAdminSettings(row: Awaited<ReturnType<typeof getPlatformPaymentSettings>>): AdminPaymentSettings {
   return {
     shamCashAccountId: row.sham_cash_account_id,
+    shamCashApiAccountId: row.sham_cash_api_account_id,
     shamCashAccountName: row.sham_cash_account_name,
     shamCashQrImageUrl: row.sham_cash_qr_image_url,
     paymentInstructions: row.payment_instructions,
@@ -47,6 +48,7 @@ export async function PUT(request: Request) {
       const existing = await getPlatformPaymentSettings();
       const row = await updatePlatformPaymentSettings({
         shamCashAccountId: parsed.data.shamCashAccountId,
+        shamCashApiAccountId: parsed.data.shamCashApiAccountId,
         shamCashAccountName: parsed.data.shamCashAccountName,
         paymentInstructions: parsed.data.paymentInstructions,
         shamCashQrImageUrl: existing.sham_cash_qr_image_url,

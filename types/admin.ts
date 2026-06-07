@@ -109,6 +109,7 @@ export type AdminPendingManualPayment = {
 
 export type AdminPaymentSettings = {
   shamCashAccountId: string;
+  shamCashApiAccountId: string;
   shamCashAccountName: string;
   shamCashQrImageUrl: string | null;
   paymentInstructions: string;

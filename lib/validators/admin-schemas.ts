@@ -20,6 +20,7 @@ export const rejectEventSchema = z.object({
 
 export const updatePaymentSettingsSchema = z.object({
   shamCashAccountId: z.string().min(1).max(120),
+  shamCashApiAccountId: z.string().max(120).optional(),
   shamCashAccountName: z.string().min(1).max(200),
   paymentInstructions: z.string().min(1).max(4000),
 });

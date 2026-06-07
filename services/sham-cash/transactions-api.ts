@@ -1,5 +1,15 @@
 import type { ShamCashTransaction } from "./transaction-matcher";
 
+const CURRENCY_TO_COIN_ID: Record<string, number> = {
+  USD: 1,
+  SYP: 2,
+  EUR: 3,
+};
+
+export function currencyToCoinId(currency: string): number | undefined {
+  return CURRENCY_TO_COIN_ID[currency.trim().toUpperCase()];
+}
+
 const COIN_ID_TO_CURRENCY: Record<number, string> = {
   1: "USD",
   2: "SYP",
