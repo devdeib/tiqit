@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiPost } from "@/lib/api/client";
+import { normalizeToE164Phone, formatPhoneValidationHint } from "@/lib/phone";
 import type { PublicEventDetail, ReservationResponse } from "@/types/api";
 
 type Props = { event: PublicEventDetail };
@@ -25,15 +26,20 @@ export function PurchaseForm({ event }: Props) {
     setError(null);
     setLoading(true);
     try {
+      const normalizedPhone = normalizeToE164Phone(phone);
+      if (!normalizedPhone) {
+        throw new Error(formatPhoneValidationHint());
+      }
+
       const { reservation } = await apiPost<{ reservation: ReservationResponse }>(
         "/api/reservations",
         {
           eventId: event.id,
           items,
-          guest: { fullName, phone, email: email || null },
+          guest: { fullName, phone: normalizedPhone, email: email || null },
         },
       );
-      sessionStorage.setItem("guestPhone", phone);
+      sessionStorage.setItem("guestPhone", normalizedPhone);
       router.push(`/checkout/${reservation.reservationId}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to reserve tickets");

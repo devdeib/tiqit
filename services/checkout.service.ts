@@ -377,16 +377,25 @@ async function resumeCheckout(
   const appUrl = getAppBaseUrl();
   const mockMode = providerPaymentId?.startsWith("mock_") ?? isShamCashMockMode();
 
+  const redirectUrl = mockMode
+    ? `${appUrl}/checkout/mock-pay?orderId=${orderId}`
+    : buildLiveCheckoutRedirectUrl(orderId, referenceCode ?? "");
+
   return {
     orderId,
     paymentId,
     totalAmount: Number(order.total_amount),
-    redirectUrl: mockMode
-      ? `${appUrl}/checkout/mock-pay?orderId=${orderId}`
-      : `${appUrl}/checkout/redirect?orderId=${orderId}`,
+    redirectUrl,
     mockMode,
     referenceCode: mockMode ? undefined : referenceCode,
   };
+}
+
+function buildLiveCheckoutRedirectUrl(orderId: string, referenceCode: string): string {
+  const appUrl = getAppBaseUrl();
+  const params = new URLSearchParams({ orderId });
+  if (referenceCode) params.set("reference", referenceCode);
+  return `${appUrl}/checkout/redirect?${params.toString()}`;
 }
 
 export async function getCheckoutStatus(

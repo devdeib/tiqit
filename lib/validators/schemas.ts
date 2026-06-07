@@ -1,8 +1,15 @@
 import { z } from "zod";
+import { normalizeToE164Phone } from "@/lib/phone";
 
-export const e164PhoneSchema = z
-  .string()
-  .regex(/^\+[1-9][0-9]{7,14}$/, "Phone must be E.164 format (e.g. +963900000001)");
+export const e164PhoneSchema = z.preprocess(
+  (val) => {
+    if (typeof val !== "string") return val;
+    return normalizeToE164Phone(val) ?? val.trim();
+  },
+  z
+    .string()
+    .regex(/^\+[1-9][0-9]{7,14}$/, "Phone must be E.164 format (e.g. +963900000001)"),
+);
 
 export const guestSchema = z.object({
   fullName: z.string().min(2).max(200),
