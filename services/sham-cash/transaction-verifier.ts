@@ -1,4 +1,5 @@
 import { getServerEnv } from "@/lib/env";
+import { logger } from "@/lib/logger";
 import {
   ShamCashConfigurationError,
   ShamCashError,
@@ -15,7 +16,8 @@ import {
   isIncomingTransaction,
   parseShamCashTransaction,
   receiverAccountMatchesAny,
-  transactionIdsMatch,
+  summarizeRawTransactionForLog,
+  transactionMatchesSubmittedId,
   currencyToCoinId,
 } from "./transactions-api";
 import {
@@ -40,11 +42,15 @@ export type TransactionVerificationResult =
   | { ok: false; reason: string };
 
 export const TRANSACTION_VERIFICATION_MESSAGES = {
-  notFound:
-    "Transaction not found. Check the ID and try again. It can take a few minutes to appear in Sham Cash.",
+  notFound: "Transaction not found. Check the ID and try again.",
+  notSyncedYet:
+    "Transaction not synced yet. Wait a few minutes for Sham Cash to update, then try again.",
+  idMismatch:
+    "Transaction ID does not match Sham Cash records. Use the ID shown on your payment receipt.",
   notIncoming: "This transaction is not an incoming payment.",
   wrongReceiver: "Payment was not sent to the correct Sham Cash account.",
   amountMismatch: "Transaction amount does not match your order total.",
+  currencyMismatch: "Transaction currency does not match your order.",
   outsideWindow: "Transaction is outside the valid payment window.",
   apiUnavailable: "Payment verification is temporarily unavailable. Please try again shortly.",
   invalidAccount:
@@ -68,6 +74,7 @@ export async function verifySubmittedTransaction(
 
   let transactions: ShamCashTransaction[];
   let apiAccountId = displayAccountId;
+  let lookupDebug: VerificationLookupDebug | undefined;
 
   try {
     if (deps.listTransactions) {
@@ -78,7 +85,7 @@ export async function verifySubmittedTransaction(
         deps.httpClientDeps,
         input.configuredApiAccountId,
       );
-      transactions = await fetchTransactionsForVerification(
+      const fetched = await fetchTransactionsForVerification(
         apiAccountId,
         displayAccountId,
         transactionId,
@@ -86,16 +93,93 @@ export async function verifySubmittedTransaction(
         input.expectedCurrency,
         deps.httpClientDeps,
       );
+      transactions = fetched.transactions;
+      lookupDebug = fetched.debug;
     }
   } catch (err) {
     return { ok: false, reason: mapShamCashErrorToUserMessage(err) };
   }
 
-  const transaction = transactions.find((tx) => transactionIdsMatch(tx.transaction_id, transactionId));
-  if (!transaction) {
+  const window = computeVerificationWindow(input.paymentCreatedAt, deps);
+  const idMatches = transactions.filter((tx) =>
+    transactionMatchesSubmittedId(tx, transactionId),
+  );
+
+  if (idMatches.length === 0) {
+    logVerificationLookup({
+      submittedId: transactionId,
+      apiAccountId,
+      displayAccountId,
+      transactionCount: transactions.length,
+      idMatchCount: 0,
+      lookupDebug,
+      sampleTransactions: transactions.slice(0, 5).map((tx) => ({
+        transaction_id: tx.transaction_id,
+        identifiers: tx.identifiers,
+        amount: tx.amount,
+        currency: tx.currency,
+        direction: tx.direction,
+        receiver_account: tx.receiver_account,
+      })),
+    });
+
+    const financialMatches = findFinancialMatches(
+      transactions,
+      input,
+      displayAccountId,
+      apiAccountId,
+    );
+    if (financialMatches.length > 0) {
+      return { ok: false, reason: TRANSACTION_VERIFICATION_MESSAGES.idMismatch };
+    }
+
+    if (transactions.length === 0) {
+      return { ok: false, reason: TRANSACTION_VERIFICATION_MESSAGES.notSyncedYet };
+    }
+
     return { ok: false, reason: TRANSACTION_VERIFICATION_MESSAGES.notFound };
   }
 
+  let lastFailure: string | null = null;
+  for (const transaction of idMatches) {
+    const result = validateMatchedTransaction(
+      transaction,
+      input,
+      displayAccountId,
+      apiAccountId,
+      window,
+    );
+    if (result.ok) {
+      logVerificationLookup({
+        submittedId: transactionId,
+        apiAccountId,
+        displayAccountId,
+        transactionCount: transactions.length,
+        idMatchCount: idMatches.length,
+        matchedTransactionId: transaction.transaction_id,
+        lookupDebug,
+      });
+      return result;
+    }
+    lastFailure = result.reason;
+  }
+
+  return { ok: false, reason: lastFailure ?? TRANSACTION_VERIFICATION_MESSAGES.notFound };
+}
+
+type VerificationLookupDebug = {
+  queriesExecuted: number;
+  rawRowCount: number;
+  rawSamples: Record<string, unknown>[];
+};
+
+function validateMatchedTransaction(
+  transaction: ShamCashTransaction,
+  input: TransactionVerificationInput,
+  displayAccountId: string,
+  apiAccountId: string,
+  window: { start: Date; end: Date },
+): TransactionVerificationResult {
   const incoming = isIncomingTransaction(transaction);
   if (incoming === false) {
     return { ok: false, reason: TRANSACTION_VERIFICATION_MESSAGES.notIncoming };
@@ -114,15 +198,34 @@ export async function verifySubmittedTransaction(
   if (
     normalizeCurrency(transaction.currency) !== normalizeCurrency(input.expectedCurrency)
   ) {
-    return { ok: false, reason: TRANSACTION_VERIFICATION_MESSAGES.amountMismatch };
+    return { ok: false, reason: TRANSACTION_VERIFICATION_MESSAGES.currencyMismatch };
   }
 
-  const window = computeVerificationWindow(input.paymentCreatedAt, deps);
   if (!isWithinDateWindow(transaction.occurred_at, window.start, window.end)) {
     return { ok: false, reason: TRANSACTION_VERIFICATION_MESSAGES.outsideWindow };
   }
 
   return { ok: true, transaction };
+}
+
+function findFinancialMatches(
+  transactions: ShamCashTransaction[],
+  input: TransactionVerificationInput,
+  displayAccountId: string,
+  apiAccountId: string,
+): ShamCashTransaction[] {
+  return transactions.filter((tx) => {
+    if (isIncomingTransaction(tx) === false) return false;
+    if (!receiverAccountMatchesAny(tx.receiver_account, [displayAccountId, apiAccountId])) {
+      return false;
+    }
+    if (!amountsMatch(tx.amount, input.expectedAmount)) return false;
+    return normalizeCurrency(tx.currency) === normalizeCurrency(input.expectedCurrency);
+  });
+}
+
+function logVerificationLookup(context: Record<string, unknown>): void {
+  logger.info("sham_cash_verification_lookup", context);
 }
 
 function mapShamCashErrorToUserMessage(error: unknown): string {
@@ -157,7 +260,7 @@ async function fetchTransactionsForVerification(
   paymentCreatedAt: string,
   expectedCurrency: string,
   httpClientDeps?: TransactionMatcherDeps["httpClientDeps"],
-): Promise<ShamCashTransaction[]> {
+): Promise<{ transactions: ShamCashTransaction[]; debug: VerificationLookupDebug }> {
   const client = createShamCashHttpClient(
     httpClientDeps ?? {
       getApiKey: () => getShamCashApiToken(),
@@ -166,37 +269,51 @@ async function fetchTransactionsForVerification(
   );
 
   const coinId = currencyToCoinId(expectedCurrency);
+  const startAt = formatTransactionQueryStart(paymentCreatedAt);
 
+  // Prefer recent incoming transactions without transaction_ids filter, then direct lookup.
   const queries: ShamCashListTransactionsQuery[] = [
+    { accountId: apiAccountId, startAt, coinId, limit: 100 },
+    { accountId: apiAccountId, startAt, limit: 100 },
+    { accountId: apiAccountId, coinId, limit: 100 },
+    { accountId: apiAccountId, limit: 100 },
     { accountId: apiAccountId, transactionIds: transactionId, coinId, limit: 20 },
-    {
-      accountId: apiAccountId,
-      transactionIds: transactionId,
-      coinId,
-      startAt: formatTransactionQueryStart(paymentCreatedAt),
-      limit: 20,
-    },
-    {
-      accountId: apiAccountId,
-      coinId,
-      startAt: formatTransactionQueryStart(paymentCreatedAt),
-      limit: 100,
-    },
+    { accountId: apiAccountId, transactionIds: transactionId, limit: 20 },
   ];
 
   const merged = new Map<string, ShamCashTransaction>();
+  const rawSamples: Record<string, unknown>[] = [];
+  let rawRowCount = 0;
+  let queriesExecuted = 0;
 
   for (const query of queries) {
-    const parsed = await loadParsedTransactions(client, query, displayAccountId, apiAccountId);
-    for (const tx of parsed) {
-      merged.set(tx.transaction_id, tx);
+    queriesExecuted += 1;
+    const { parsed, rawRows } = await loadParsedTransactions(
+      client,
+      query,
+      displayAccountId,
+      apiAccountId,
+    );
+    rawRowCount += rawRows.length;
+
+    for (const row of rawRows.slice(0, 3)) {
+      if (rawSamples.length < 5) rawSamples.push(summarizeRawTransactionForLog(row));
     }
-    if ([...merged.values()].some((tx) => transactionIdsMatch(tx.transaction_id, transactionId))) {
+
+    for (const tx of parsed) {
+      const key = tx.identifiers.join("|") || tx.transaction_id;
+      merged.set(key, tx);
+    }
+
+    if ([...merged.values()].some((tx) => transactionMatchesSubmittedId(tx, transactionId))) {
       break;
     }
   }
 
-  return [...merged.values()];
+  return {
+    transactions: [...merged.values()],
+    debug: { queriesExecuted, rawRowCount, rawSamples },
+  };
 }
 
 async function loadParsedTransactions(
@@ -204,19 +321,19 @@ async function loadParsedTransactions(
   query: ShamCashListTransactionsQuery,
   displayAccountId: string,
   apiAccountId: string,
-): Promise<ShamCashTransaction[]> {
+): Promise<{ parsed: ShamCashTransaction[]; rawRows: Record<string, unknown>[] }> {
   const response = await client.listTransactions(query);
-  const rows = extractTransactionsFromResponse(response.data ?? response.raw);
+  const rawRows = extractTransactionsFromResponse(response.data ?? response.raw);
   const parsed: ShamCashTransaction[] = [];
 
-  for (const row of rows) {
+  for (const row of rawRows) {
     const transaction = parseShamCashTransaction(row, {
       accountId: apiAccountId || displayAccountId,
     });
     if (transaction) parsed.push(transaction);
   }
 
-  return parsed;
+  return { parsed, rawRows };
 }
 
 function formatTransactionQueryStart(createdAt: string): string {

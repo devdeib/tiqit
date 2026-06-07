@@ -6,8 +6,10 @@ import {
   isWithinDateWindow,
 } from "../services/sham-cash/transaction-matcher.ts";
 import {
+  extractTransactionIdentifiers,
   extractTransactionsFromResponse,
   parseShamCashTransaction,
+  transactionMatchesSubmittedId,
 } from "../services/sham-cash/transactions-api.ts";
 
 const payment = {
@@ -21,6 +23,7 @@ const payment = {
 
 const matchingTx = {
   transaction_id: "txn_001",
+  identifiers: ["txn_001"],
   amount: 15000,
   currency: "SYP",
   occurred_at: "2026-06-04T12:05:00.000Z",
@@ -91,11 +94,60 @@ describe("parseShamCashTransaction", () => {
     });
 
     assert.equal(parsed?.transaction_id, "txn_123");
+    assert.deepEqual(parsed?.identifiers, ["txn_123"]);
     assert.equal(parsed?.note, "TIQIT-ABCD1234");
+  });
+
+  it("collects alternate identifier fields from provider payload", () => {
+    const parsed = parseShamCashTransaction({
+      id: "acc_tx_internal",
+      reference: "26100263",
+      external_id: "ext-99",
+      amount: 100,
+      currency: "SYP",
+      occurred_at: "2026-06-04T12:00:00.000Z",
+    });
+
+    assert.equal(parsed?.transaction_id, "acc_tx_internal");
+    assert.ok(parsed?.identifiers.includes("26100263"));
+    assert.ok(parsed?.identifiers.includes("acc_tx_internal"));
+    assert.ok(parsed?.identifiers.includes("ext-99"));
   });
 
   it("returns null when required fields are missing", () => {
     assert.equal(parseShamCashTransaction({ transaction_id: "txn_123" }), null);
+  });
+});
+
+describe("extractTransactionIdentifiers", () => {
+  it("reads id, reference, and external_id fields", () => {
+    const ids = extractTransactionIdentifiers({
+      id: "acc-1",
+      reference_id: 26100263,
+      external_id: "ext-1",
+    });
+    assert.ok(ids.includes("acc-1"));
+    assert.ok(ids.includes("26100263"));
+    assert.ok(ids.includes("ext-1"));
+  });
+});
+
+describe("transactionMatchesSubmittedId", () => {
+  it("matches user input against alternate identifiers", () => {
+    const tx = {
+      transaction_id: "acc_tx_internal",
+      identifiers: ["acc_tx_internal", "26100263"],
+      amount: 1,
+      currency: "SYP",
+      occurred_at: "t",
+      sender_name: "",
+      sender_address: "",
+      receiver_account: "",
+      direction: "incoming",
+      note: "",
+    };
+    assert.equal(transactionMatchesSubmittedId(tx, "26100263"), true);
+    assert.equal(transactionMatchesSubmittedId(tx, "missing"), false);
   });
 });
 

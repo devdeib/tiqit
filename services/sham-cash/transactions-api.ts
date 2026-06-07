@@ -16,6 +16,19 @@ const COIN_ID_TO_CURRENCY: Record<number, string> = {
   3: "EUR",
 };
 
+/** Fields Sham Cash may use for transaction identity (app UI vs API payload). */
+export const TRANSACTION_IDENTIFIER_FIELDS = [
+  "transaction_id",
+  "id",
+  "reference",
+  "reference_id",
+  "external_id",
+  "reference_number",
+  "txn_id",
+  "txn_ref",
+  "payment_reference",
+] as const;
+
 function readString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
@@ -29,16 +42,29 @@ function readNumber(value: unknown): number | undefined {
   return undefined;
 }
 
-function readTransactionId(raw: Record<string, unknown>): string | undefined {
-  const direct = readString(raw.transaction_id);
+function readIdentifierValue(raw: Record<string, unknown>, field: string): string | undefined {
+  const direct = readString(raw[field]);
   if (direct) return direct;
-  const numeric = readNumber(raw.transaction_id);
+  const numeric = readNumber(raw[field]);
   if (numeric !== undefined) return String(Math.trunc(numeric));
-  const idString = readString(raw.id);
-  if (idString) return idString;
-  const idNumeric = readNumber(raw.id);
-  if (idNumeric !== undefined) return String(Math.trunc(idNumeric));
-  return readString(raw.reference_number) ?? readString(raw.txn_id);
+  return undefined;
+}
+
+export function extractTransactionIdentifiers(raw: Record<string, unknown>): string[] {
+  const ids = new Set<string>();
+  for (const field of TRANSACTION_IDENTIFIER_FIELDS) {
+    const value = readIdentifierValue(raw, field);
+    if (value) ids.add(value);
+  }
+  return [...ids];
+}
+
+function readTransactionId(raw: Record<string, unknown>): string | undefined {
+  for (const field of TRANSACTION_IDENTIFIER_FIELDS) {
+    const value = readIdentifierValue(raw, field);
+    if (value) return value;
+  }
+  return undefined;
 }
 
 function readCurrency(raw: Record<string, unknown>): string | undefined {
@@ -70,6 +96,7 @@ export function normalizeTransactionId(value: string): string {
 export function transactionIdsMatch(left: string, right: string): boolean {
   const a = normalizeTransactionId(left);
   const b = normalizeTransactionId(right);
+  if (!a || !b) return false;
   if (a === b) return true;
 
   const numA = Number(a);
@@ -79,6 +106,17 @@ export function transactionIdsMatch(left: string, right: string): boolean {
   }
 
   return false;
+}
+
+export function transactionMatchesSubmittedId(
+  transaction: ShamCashTransaction,
+  submittedId: string,
+): boolean {
+  const candidates = new Set<string>([
+    transaction.transaction_id,
+    ...(transaction.identifiers ?? []),
+  ]);
+  return [...candidates].some((candidate) => transactionIdsMatch(candidate, submittedId));
 }
 
 export function receiverAccountMatchesAny(
@@ -142,6 +180,7 @@ export function parseShamCashTransaction(
   raw: Record<string, unknown>,
   options?: { accountId?: string },
 ): ShamCashTransaction | null {
+  const identifiers = extractTransactionIdentifiers(raw);
   const transactionId = readTransactionId(raw);
   const amount = readNumber(raw.amount) ?? readNumber(raw.value);
   const currency = readCurrency(raw);
@@ -159,6 +198,7 @@ export function parseShamCashTransaction(
 
   return {
     transaction_id: transactionId,
+    identifiers: identifiers.length ? identifiers : [transactionId],
     amount,
     currency,
     occurred_at: occurredAt,
@@ -167,6 +207,27 @@ export function parseShamCashTransaction(
     receiver_account: readReceiverAccount(raw, options?.accountId),
     direction: direction === "unknown" ? "incoming" : direction,
     note: readString(raw.note) ?? readString(raw.description) ?? "",
+  };
+}
+
+export function summarizeRawTransactionForLog(raw: Record<string, unknown>): Record<string, unknown> {
+  const identifiers = extractTransactionIdentifiers(raw);
+  return {
+    identifiers,
+    amount: readNumber(raw.amount) ?? readNumber(raw.value),
+    currency: readCurrency(raw),
+    direction: readString(raw.direction) ?? readString(raw.type),
+    receiver:
+      readString(raw.account_id) ??
+      readString(raw.receiver_address) ??
+      readString(raw.receiver_account),
+    reference: readString(raw.reference) ?? readString(raw.reference_id),
+    external_id: readString(raw.external_id),
+    occurred_at:
+      readString(raw.occurred_at) ??
+      readString(raw.created_at) ??
+      readString(raw.timestamp),
+    raw_keys: Object.keys(raw),
   };
 }
 

@@ -19,6 +19,8 @@ export type PaymentForMatching = {
 
 export type ShamCashTransaction = {
   transaction_id: string;
+  /** All known ids from the provider record (id, reference, external_id, etc.). */
+  identifiers: string[];
   amount: number;
   currency: string;
   occurred_at: string;

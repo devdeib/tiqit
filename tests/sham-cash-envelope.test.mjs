@@ -51,6 +51,7 @@ describe("parseShamCashTransaction", () => {
     );
 
     assert.equal(parsed?.transaction_id, "184627893");
+    assert.deepEqual(parsed?.identifiers, ["184627893"]);
     assert.equal(parsed?.currency, "SYP");
     assert.equal(parsed?.receiver_account, "acc-123");
     assert.equal(parsed?.direction, "incoming");
