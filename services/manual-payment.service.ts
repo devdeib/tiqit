@@ -143,7 +143,7 @@ export async function submitManualPaymentProof(input: {
   const submittedAt = new Date().toISOString();
 
   if (!verification.ok) {
-    await supabase
+    const { error: failedUpdateError } = await supabase
       .from("payments")
       .update({
         status: "pending",
@@ -158,6 +158,10 @@ export async function submitManualPaymentProof(input: {
         },
       })
       .eq("id", payment.id);
+
+    if (failedUpdateError) {
+      // Guest still gets the verification reason even if optional audit columns are unavailable.
+    }
 
     logPaymentEvent({
       event: "payment_verification_pending",
@@ -197,7 +201,15 @@ export async function submitManualPaymentProof(input: {
       amount: verification.transaction.amount,
     },
     rawBody,
-  );
+  ).catch((err) => {
+    if (err instanceof AppError && err.expose) throw err;
+    throw new AppError("Payment was verified but ticket issuance failed. Contact support.", {
+      code: "INTERNAL",
+      status: 500,
+      expose: true,
+      cause: err,
+    });
+  });
 
   await supabase
     .from("payments")

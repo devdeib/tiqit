@@ -82,6 +82,11 @@ export function PaymentSettingsForm({ initial }: { initial: AdminPaymentSettings
 
         <label className="block text-sm">
           <span className="font-medium">Account ID</span>
+          <p className="mt-1 text-xs text-neutral-500">
+            Wallet or account number shown to customers when they pay (e.g. Sham Cash phone/wallet
+            ID). Verification uses your linked API account automatically, or set
+            SHAM_CASH_API_ACCOUNT_ID in Vercel.
+          </p>
           <input
             type="text"
             required

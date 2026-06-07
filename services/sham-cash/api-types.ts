@@ -26,6 +26,21 @@ export type ShamCashPaymentStatusResponse = {
 
 export type ShamCashTransactionsListResponse = {
   raw: Record<string, unknown>;
+  data: unknown;
+};
+
+export type ShamCashAccountsListResponse = {
+  raw: Record<string, unknown>;
+  data: unknown;
+};
+
+export type ShamCashListTransactionsQuery = {
+  accountId: string;
+  transactionIds?: string;
+  startAt?: string;
+  endAt?: string;
+  coinId?: number;
+  limit?: number;
 };
 
 export type ShamCashApiErrorEnvelope = {

@@ -24,20 +24,20 @@ describe("verifySubmittedTransaction", () => {
   it("accepts a valid incoming transaction to the Tiqit account", async () => {
     const result = await verifySubmittedTransaction(
       {
-        transactionId: "txn_001",
+        transactionId: "184627893",
         expectedAmount: 15000,
         expectedCurrency: "SYP",
         tiqitAccountId: tiqitAccount,
         paymentCreatedAt,
       },
       {
-        listTransactions: async () => [validTx],
+        listTransactions: async () => [{ ...validTx, transaction_id: "184627893" }],
         now: () => new Date("2026-06-04T12:10:00.000Z"),
       },
     );
 
     assert.equal(result.ok, true);
-    if (result.ok) assert.equal(result.transaction.transaction_id, "txn_001");
+    if (result.ok) assert.equal(result.transaction.transaction_id, "184627893");
   });
 
   it("rejects when transaction id is not found", async () => {

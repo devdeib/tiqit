@@ -8,11 +8,8 @@ import {
 import { buildShamCashAuthHeaders } from "./auth";
 import { buildShamCashApiUrl } from "./config";
 import { DEFAULT_SHAM_CASH_RETRY, DEFAULT_SHAM_CASH_TIMEOUT_MS } from "./constants";
-import {
-  ShamCashNetworkError,
-  ShamCashProviderError,
-  ShamCashTimeoutError,
-} from "./errors";
+import { assertShamCashSuccessEnvelope } from "./envelope";
+import { ShamCashNetworkError, ShamCashProviderError, ShamCashTimeoutError } from "./errors";
 import { parseShamCashErrorEnvelope } from "./parse-error";
 
 export type ShamCashApiRequestOptions = {
@@ -21,6 +18,7 @@ export type ShamCashApiRequestOptions = {
   apiToken: string;
   baseUrl: string;
   body?: unknown;
+  query?: Record<string, string | number | boolean | undefined | null>;
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
   retryPolicy?: RetryPolicy;
@@ -47,7 +45,17 @@ export async function shamCashApiRequest<T = Record<string, unknown>>(
   const fetchImpl = options.fetchImpl ?? fetch;
   const timeoutMs = options.timeoutMs ?? DEFAULT_SHAM_CASH_TIMEOUT_MS;
   const retryPolicy = options.retryPolicy ?? DEFAULT_SHAM_CASH_RETRY;
-  const url = buildShamCashApiUrl(options.baseUrl, options.path);
+  let url = buildShamCashApiUrl(options.baseUrl, options.path);
+  if (options.query) {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(options.query)) {
+      if (value === undefined || value === null) continue;
+      const normalized = String(value).trim();
+      if (normalized) params.set(key, normalized);
+    }
+    const qs = params.toString();
+    if (qs) url = `${url}?${qs}`;
+  }
   const headers = buildShamCashAuthHeaders(options.apiToken);
 
   return withProviderRetry(
@@ -89,6 +97,7 @@ async function executeSingleRequest<T>(
     }
 
     const raw = parseSuccessBody(bodyText);
+    assertShamCashSuccessEnvelope(raw);
     return {
       data: raw as T,
       raw,

@@ -1,5 +1,11 @@
 import type { ShamCashTransaction } from "./transaction-matcher";
 
+const COIN_ID_TO_CURRENCY: Record<number, string> = {
+  1: "USD",
+  2: "SYP",
+  3: "EUR",
+};
+
 function readString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
@@ -13,16 +19,66 @@ function readNumber(value: unknown): number | undefined {
   return undefined;
 }
 
-function readReceiverAccount(raw: Record<string, unknown>): string {
+function readTransactionId(raw: Record<string, unknown>): string | undefined {
+  const direct = readString(raw.transaction_id);
+  if (direct) return direct;
+  const numeric = readNumber(raw.transaction_id);
+  if (numeric !== undefined) return String(Math.trunc(numeric));
+  const idString = readString(raw.id);
+  if (idString) return idString;
+  const idNumeric = readNumber(raw.id);
+  if (idNumeric !== undefined) return String(Math.trunc(idNumeric));
+  return readString(raw.reference_number) ?? readString(raw.txn_id);
+}
+
+function readCurrency(raw: Record<string, unknown>): string | undefined {
+  const currency = readString(raw.currency);
+  if (currency) return currency;
+  const coinId = readNumber(raw.coin_id);
+  if (coinId !== undefined) return COIN_ID_TO_CURRENCY[coinId];
+  return undefined;
+}
+
+function readReceiverAccount(raw: Record<string, unknown>, fallbackAccountId?: string): string {
   return (
+    readString(raw.account_id) ??
     readString(raw.receiver_address) ??
     readString(raw.receiver_account_id) ??
     readString(raw.receiver_account) ??
     readString(raw.receiver_id) ??
     readString(raw.recipient_address) ??
     readString(raw.recipient_account) ??
+    fallbackAccountId ??
     ""
   );
+}
+
+export function normalizeTransactionId(value: string): string {
+  return value.trim();
+}
+
+export function transactionIdsMatch(left: string, right: string): boolean {
+  const a = normalizeTransactionId(left);
+  const b = normalizeTransactionId(right);
+  if (a === b) return true;
+
+  const numA = Number(a);
+  const numB = Number(b);
+  if (Number.isFinite(numA) && Number.isFinite(numB) && numA === numB) {
+    return true;
+  }
+
+  return false;
+}
+
+export function receiverAccountMatchesAny(
+  transactionReceiver: string,
+  expectedAccountIds: string[],
+): boolean {
+  const receiver = transactionReceiver.trim().toLowerCase();
+  if (!receiver) return true;
+
+  return expectedAccountIds.some((expected) => receiverAccountMatches(transactionReceiver, expected));
 }
 
 export function isIncomingTransaction(transaction: ShamCashTransaction): boolean | null {
@@ -72,15 +128,24 @@ function parseDirection(raw: Record<string, unknown>): ShamCashTransaction["dire
   return "unknown";
 }
 
-export function parseShamCashTransaction(raw: Record<string, unknown>): ShamCashTransaction | null {
-  const transactionId = readString(raw.transaction_id);
-  const amount = readNumber(raw.amount);
-  const currency = readString(raw.currency);
-  const occurredAt = readString(raw.occurred_at);
+export function parseShamCashTransaction(
+  raw: Record<string, unknown>,
+  options?: { accountId?: string },
+): ShamCashTransaction | null {
+  const transactionId = readTransactionId(raw);
+  const amount = readNumber(raw.amount) ?? readNumber(raw.value);
+  const currency = readCurrency(raw);
+  const occurredAt =
+    readString(raw.occurred_at) ??
+    readString(raw.created_at) ??
+    readString(raw.timestamp) ??
+    readString(raw.date);
 
   if (!transactionId || amount === undefined || !currency || !occurredAt) {
     return null;
   }
+
+  const direction = parseDirection(raw);
 
   return {
     transaction_id: transactionId,
@@ -89,13 +154,26 @@ export function parseShamCashTransaction(raw: Record<string, unknown>): ShamCash
     occurred_at: occurredAt,
     sender_name: readString(raw.sender_name) ?? "",
     sender_address: readString(raw.sender_address) ?? "",
-    receiver_account: readReceiverAccount(raw),
-    direction: parseDirection(raw),
-    note: readString(raw.note) ?? "",
+    receiver_account: readReceiverAccount(raw, options?.accountId),
+    direction: direction === "unknown" ? "incoming" : direction,
+    note: readString(raw.note) ?? readString(raw.description) ?? "",
   };
 }
 
-export function extractTransactionsFromResponse(raw: Record<string, unknown>): Record<string, unknown>[] {
+export function extractTransactionsFromResponse(input: unknown): Record<string, unknown>[] {
+  if (Array.isArray(input)) {
+    return input.filter(
+      (item): item is Record<string, unknown> =>
+        item !== null && typeof item === "object" && !Array.isArray(item),
+    );
+  }
+
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return [];
+  }
+
+  const raw = input as Record<string, unknown>;
+
   if (Array.isArray(raw.value)) {
     return raw.value.filter(
       (item): item is Record<string, unknown> =>
@@ -113,7 +191,7 @@ export function extractTransactionsFromResponse(raw: Record<string, unknown>): R
     }
   }
 
-  if (raw.transaction_id) {
+  if (readTransactionId(raw)) {
     return [raw];
   }
 

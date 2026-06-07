@@ -1,3 +1,4 @@
+import { resolveShamCashApiAccountId } from "./accounts";
 import { resolveShamCashApiBaseUrl, getShamCashApiToken } from "./config";
 import { getServerEnv } from "@/lib/env";
 import { createShamCashHttpClient } from "./http-client";
@@ -30,6 +31,8 @@ export type ShamCashTransaction = {
 
 export type TransactionMatcherDeps = {
   httpClientDeps?: ShamCashHttpClientDeps;
+  accountId?: string;
+  displayAccountId?: string;
   listTransactions?: () => Promise<ShamCashTransaction[]>;
   clockSkewMs?: number;
   maxVerificationWindowMs?: number;
@@ -43,9 +46,25 @@ export async function findPaymentTransaction(
   payment: PaymentForMatching,
   deps: TransactionMatcherDeps = {},
 ): Promise<ShamCashTransaction | null> {
+  const displayAccountId = deps.displayAccountId?.trim() ?? deps.accountId?.trim();
+  if (!deps.listTransactions && !displayAccountId) {
+    return null;
+  }
+
   const transactions = deps.listTransactions
     ? await deps.listTransactions()
-    : await fetchTransactionsFromProvider(deps.httpClientDeps);
+    : await (async () => {
+        const resolvedAccountId = await resolveShamCashApiAccountId(
+          displayAccountId!,
+          deps.httpClientDeps,
+        );
+        return fetchTransactionsFromProvider(
+          payment,
+          resolvedAccountId,
+          displayAccountId!,
+          deps.httpClientDeps,
+        );
+      })();
 
   const window = computeVerificationWindow(payment.created_at, deps);
 
@@ -61,6 +80,9 @@ export async function findPaymentTransaction(
 }
 
 async function fetchTransactionsFromProvider(
+  payment: PaymentForMatching,
+  apiAccountId: string,
+  displayAccountId: string,
   httpClientDeps?: ShamCashHttpClientDeps,
 ): Promise<ShamCashTransaction[]> {
   const client = createShamCashHttpClient(
@@ -70,12 +92,26 @@ async function fetchTransactionsFromProvider(
     },
   );
 
-  const response = await client.listTransactions();
-  const rows = extractTransactionsFromResponse(response.raw);
+  const created = new Date(payment.created_at);
+  if (!Number.isNaN(created.getTime())) {
+    created.setUTCDate(created.getUTCDate() - 7);
+  }
+
+  const response = await client.listTransactions({
+    accountId: apiAccountId,
+    startAt: Number.isNaN(created.getTime())
+      ? undefined
+      : created.toISOString().slice(0, 10),
+    limit: 100,
+  });
+
+  const rows = extractTransactionsFromResponse(response.data ?? response.raw);
   const parsed: ShamCashTransaction[] = [];
 
   for (const row of rows) {
-    const transaction = parseShamCashTransaction(row);
+    const transaction = parseShamCashTransaction(row, {
+      accountId: apiAccountId || displayAccountId,
+    });
     if (transaction) parsed.push(transaction);
   }
 

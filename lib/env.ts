@@ -28,6 +28,8 @@ const serverEnvSchema = z.object({
   SHAM_CASH_API_KEY: optionalEnvString(1),
   /** Alias for SHAM_CASH_API_KEY (server-only, never exposed to client). */
   SHAMCASH_API_TOKEN: optionalEnvString(1),
+  /** Linked Sham Cash API account id for GET /transactions (from GET /accounts). */
+  SHAM_CASH_API_ACCOUNT_ID: optionalEnvString(1),
   SHAM_CASH_WEBHOOK_SECRET: optionalEnvString(1),
   SHAM_CASH_MOCK: z.preprocess(
     (val) => (typeof val === "string" && val.trim() === "" ? undefined : val),

@@ -28,7 +28,7 @@ export {
   ShamCashTimeoutError,
 } from "@/services/sham-cash/errors";
 export { SHAM_CASH_DOCUMENTED_API_BASE_URL } from "@/services/sham-cash/constants";
-export { resolveShamCashApiBaseUrl } from "@/services/sham-cash/config";
+export { resolveShamCashApiBaseUrl, getShamCashApiToken } from "@/services/sham-cash/config";
 export { buildShamCashAuthHeaders } from "@/services/sham-cash/auth";
 export { parseShamCashErrorEnvelope } from "@/services/sham-cash/parse-error";
 export { shamCashApiRequest, isRetryableShamCashError } from "@/services/sham-cash/request";
@@ -41,7 +41,7 @@ export {
   verifySubmittedTransaction,
   TRANSACTION_VERIFICATION_MESSAGES,
 } from "@/services/sham-cash/transaction-verifier";
-export { getShamCashApiToken } from "@/services/sham-cash/config";
+export { resolveShamCashApiAccountId, listShamCashAccounts } from "@/services/sham-cash/accounts";
 export type { PaymentForMatching, ShamCashTransaction } from "@/services/sham-cash/transaction-matcher";
 
 let cachedAdapter: ShamCashPaymentAdapter | null = null;

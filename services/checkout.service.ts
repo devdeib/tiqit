@@ -10,6 +10,7 @@ import {
 } from "@/services/sham-cash";
 import { findPaymentTransaction } from "@/services/sham-cash/transaction-matcher";
 import { processPaymentWebhook } from "@/services/fulfillment.service";
+import { getPlatformPaymentSettings } from "@/services/payment-settings.service";
 import { getReservation } from "@/services/reservations.service";
 import type {
   CheckoutResponse,
@@ -510,14 +511,19 @@ export async function verifyCheckoutPayment(
     );
   }
 
-  const transaction = await findPaymentTransaction({
-    id: payment.id,
-    order_id: orderId,
-    reference_code: payment.reference_code,
-    amount: Number(payment.amount),
-    currency: payment.currency,
-    created_at: payment.created_at,
-  });
+  const settings = await getPlatformPaymentSettings();
+
+  const transaction = await findPaymentTransaction(
+    {
+      id: payment.id,
+      order_id: orderId,
+      reference_code: payment.reference_code,
+      amount: Number(payment.amount),
+      currency: payment.currency,
+      created_at: payment.created_at,
+    },
+    { displayAccountId: settings.sham_cash_account_id },
+  );
 
   if (!transaction) {
     logPaymentEvent({

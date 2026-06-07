@@ -1,11 +1,14 @@
 import type {
+  ShamCashAccountsListResponse,
   ShamCashCreatePaymentRequest,
   ShamCashCreatePaymentResponse,
+  ShamCashListTransactionsQuery,
   ShamCashPaymentStatusResponse,
   ShamCashTransactionsListResponse,
 } from "./api-types";
 import { resolveShamCashApiBaseUrl } from "./config";
 import { DEFAULT_SHAM_CASH_RETRY, DEFAULT_SHAM_CASH_TIMEOUT_MS } from "./constants";
+import { unwrapShamCashEnvelopeData } from "./envelope";
 import { requireShamCashEndpointPath } from "./endpoints";
 import { ShamCashConfigurationError } from "./errors";
 import { shamCashApiRequest } from "./request";
@@ -93,9 +96,9 @@ export class ShamCashHttpClient {
     };
   }
 
-  async listTransactions(): Promise<ShamCashTransactionsListResponse> {
+  async listAccounts(): Promise<ShamCashAccountsListResponse> {
     const { apiKey, baseUrl } = this.resolveConfig();
-    const path = requireShamCashEndpointPath("LIST_TRANSACTIONS");
+    const path = requireShamCashEndpointPath("LIST_ACCOUNTS");
 
     const result = await shamCashApiRequest({
       method: "GET",
@@ -109,6 +112,37 @@ export class ShamCashHttpClient {
 
     return {
       raw: result.raw,
+      data: unwrapShamCashEnvelopeData(result.raw),
+    };
+  }
+
+  async listTransactions(
+    query: ShamCashListTransactionsQuery,
+  ): Promise<ShamCashTransactionsListResponse> {
+    const { apiKey, baseUrl } = this.resolveConfig();
+    const path = requireShamCashEndpointPath("LIST_TRANSACTIONS");
+
+    const result = await shamCashApiRequest({
+      method: "GET",
+      path,
+      query: {
+        account_id: query.accountId,
+        transaction_ids: query.transactionIds,
+        start_at: query.startAt,
+        end_at: query.endAt,
+        coin_id: query.coinId,
+        limit: query.limit,
+      },
+      apiToken: apiKey,
+      baseUrl,
+      fetchImpl: this.fetchImpl,
+      timeoutMs: this.timeoutMs,
+      retryPolicy: this.retryPolicy,
+    });
+
+    return {
+      raw: result.raw,
+      data: unwrapShamCashEnvelopeData(result.raw),
     };
   }
 }
