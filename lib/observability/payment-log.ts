@@ -12,7 +12,8 @@ export type PaymentLogEvent =
   | "payment_duplicate_webhook"
   | "payment_status_polled"
   | "payment_verification_pending"
-  | "payment_verified";
+  | "payment_verified"
+  | "payment_proof_submitted";
 
 export type PaymentLogContext = {
   event: PaymentLogEvent;

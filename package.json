@@ -9,7 +9,7 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "staging:audit": "node scripts/staging-audit.mjs",
-    "test": "node --experimental-strip-types --import ./tests/register-ts-resolver.mjs --test tests/admin-schemas.test.mjs tests/staff-scan-logic.test.mjs tests/qr-parse.test.mjs tests/sham-cash-http-client.test.mjs tests/sham-cash-poll-payload.test.mjs tests/sham-cash-map-response.test.mjs tests/sham-cash-auth.test.mjs tests/sham-cash-parse-error.test.mjs tests/sham-cash-request.test.mjs tests/sham-cash-reference-code.test.mjs tests/sham-cash-transaction-matcher.test.mjs tests/phone-normalize.test.mjs"
+    "test": "node --experimental-strip-types --import ./tests/register-ts-resolver.mjs --test tests/admin-schemas.test.mjs tests/manual-payment-schemas.test.mjs tests/staff-scan-logic.test.mjs tests/qr-parse.test.mjs tests/sham-cash-http-client.test.mjs tests/sham-cash-poll-payload.test.mjs tests/sham-cash-map-response.test.mjs tests/sham-cash-auth.test.mjs tests/sham-cash-parse-error.test.mjs tests/sham-cash-request.test.mjs tests/sham-cash-reference-code.test.mjs tests/sham-cash-transaction-matcher.test.mjs tests/phone-normalize.test.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.3",

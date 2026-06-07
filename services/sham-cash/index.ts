@@ -42,15 +42,11 @@ export type { PaymentForMatching, ShamCashTransaction } from "@/services/sham-ca
 let cachedAdapter: ShamCashPaymentAdapter | null = null;
 
 /**
- * Phase 1: mock payments everywhere by default.
- * Live Sham Cash only when SHAM_CASH_FORCE_LIVE=true and SHAM_CASH_API_KEY is set.
- * Having an API key in env does NOT enable live mode.
+ * Mock payments when SHAM_CASH_MOCK=true; otherwise live manual Sham Cash checkout.
  */
 export function resolveShamCashMode(): PaymentProviderMode {
   if (process.env.SHAM_CASH_MOCK === "true") return "mock";
-  if (process.env.SHAM_CASH_FORCE_LIVE !== "true") return "mock";
-
-  return getServerEnv().SHAM_CASH_API_KEY ? "live" : "mock";
+  return "live";
 }
 
 export function getShamCashAdapter(): ShamCashPaymentAdapter {

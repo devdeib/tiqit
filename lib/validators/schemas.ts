@@ -47,6 +47,11 @@ export const verifyPaymentSchema = z.object({
   phone: e164PhoneSchema,
 });
 
+export const submitManualPaymentFormSchema = z.object({
+  phone: e164PhoneSchema,
+  transactionId: z.string().min(3).max(120),
+});
+
 export const orderLookupSchema = z.object({
   orderId: z.string().uuid(),
   phone: e164PhoneSchema,

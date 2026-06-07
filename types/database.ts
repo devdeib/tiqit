@@ -21,9 +21,9 @@ export type EventStatus =
   | "completed"
   | "cancelled";
 export type ReservationStatus = "pending" | "expired" | "converted";
-export type OrderStatus = "pending" | "confirmed" | "cancelled";
+export type OrderStatus = "pending" | "payment_pending" | "confirmed" | "cancelled";
 export type TicketStatus = "confirmed" | "used" | "voided";
-export type PaymentStatus = "pending" | "completed" | "failed";
+export type PaymentStatus = "pending" | "completed" | "failed" | "rejected";
 export type PayoutStatus =
   | "held"
   | "eligible"
@@ -361,9 +361,14 @@ export interface Database {
           provider_payment_id: string;
           reference_code: string | null;
           provider_transaction_id: string | null;
+          payment_method: string;
           amount: number;
           currency: string;
           status: PaymentStatus;
+          proof_image_url: string | null;
+          submitted_at: string | null;
+          verified_at: string | null;
+          verified_by: string | null;
           webhook_verified: boolean;
           webhook_received_at: string | null;
           raw_webhook_payload: Json | null;
@@ -377,9 +382,14 @@ export interface Database {
           provider_payment_id: string;
           reference_code?: string | null;
           provider_transaction_id?: string | null;
+          payment_method?: string;
           amount: number;
           currency?: string;
           status?: PaymentStatus;
+          proof_image_url?: string | null;
+          submitted_at?: string | null;
+          verified_at?: string | null;
+          verified_by?: string | null;
           webhook_verified?: boolean;
           webhook_received_at?: string | null;
           raw_webhook_payload?: Json | null;
@@ -387,6 +397,28 @@ export interface Database {
           updated_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["payments"]["Insert"]>;
+        Relationships: [];
+      };
+      platform_payment_settings: {
+        Row: {
+          id: string;
+          sham_cash_account_id: string;
+          sham_cash_account_name: string;
+          sham_cash_qr_image_url: string | null;
+          payment_instructions: string;
+          updated_at: string;
+          updated_by: string | null;
+        };
+        Insert: {
+          id?: string;
+          sham_cash_account_id?: string;
+          sham_cash_account_name?: string;
+          sham_cash_qr_image_url?: string | null;
+          payment_instructions?: string;
+          updated_at?: string;
+          updated_by?: string | null;
+        };
+        Update: Partial<Database["public"]["Tables"]["platform_payment_settings"]["Insert"]>;
         Relationships: [];
       };
       tickets: {

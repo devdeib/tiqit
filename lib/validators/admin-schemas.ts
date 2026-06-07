@@ -17,3 +17,13 @@ export const updateAdminUserSchema = z.object({
 export const rejectEventSchema = z.object({
   reason: z.string().max(2000).optional(),
 });
+
+export const updatePaymentSettingsSchema = z.object({
+  shamCashAccountId: z.string().min(1).max(120),
+  shamCashAccountName: z.string().min(1).max(200),
+  paymentInstructions: z.string().min(1).max(4000),
+});
+
+export const rejectManualPaymentSchema = z.object({
+  reason: z.string().max(2000).optional(),
+});

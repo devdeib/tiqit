@@ -93,6 +93,28 @@ export type AdminStuckPayment = {
   hasStoredPayload: boolean;
 };
 
+export type AdminPendingManualPayment = {
+  paymentId: string;
+  orderId: string;
+  orderReference: string;
+  customerName: string;
+  customerPhone: string;
+  amount: number;
+  currency: string;
+  transactionId: string | null;
+  proofImageUrl: string;
+  orderStatus: string;
+  submittedAt: string;
+};
+
+export type AdminPaymentSettings = {
+  shamCashAccountId: string;
+  shamCashAccountName: string;
+  shamCashQrImageUrl: string | null;
+  paymentInstructions: string;
+  updatedAt: string;
+};
+
 export type AdminAuditLogRow = {
   id: string;
   action: string;

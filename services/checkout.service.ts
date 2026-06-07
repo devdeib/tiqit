@@ -425,6 +425,8 @@ export async function getCheckoutStatus(
   let paymentStatus: CheckoutStatusResponse["paymentStatus"] = "pending";
   if (payments?.some((p) => p.status === "completed")) {
     paymentStatus = "completed";
+  } else if (payments?.some((p) => p.status === "rejected")) {
+    paymentStatus = "rejected";
   } else if (payments?.some((p) => p.status === "failed")) {
     paymentStatus = "failed";
   }

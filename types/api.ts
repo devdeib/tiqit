@@ -67,9 +67,32 @@ export type CheckoutVerifyPaymentResponse = {
 export type CheckoutStatusResponse = {
   orderId: string;
   orderStatus: string;
-  paymentStatus: "pending" | "completed" | "failed";
+  paymentStatus: "pending" | "completed" | "failed" | "rejected";
   ticketsIssued: boolean;
   ticketCount: number;
+};
+
+export type PublicShamCashPaymentSettings = {
+  accountId: string;
+  accountName: string;
+  qrImageUrl: string | null;
+  instructions: string;
+};
+
+export type ManualPaymentCheckoutContext = {
+  orderReferenceCode: string;
+  totalAmount: number;
+  currency: string;
+  orderStatus: string;
+  paymentStatus: string | null;
+  shamCash: PublicShamCashPaymentSettings;
+};
+
+export type ManualPaymentSubmitResponse = {
+  orderId: string;
+  orderStatus: "payment_pending";
+  referenceCode: string;
+  submittedAt: string;
 };
 
 export type OrderConfirmationResponse = {

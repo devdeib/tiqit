@@ -1,24 +1,21 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { apiGet, apiPost } from "@/lib/api/client";
+import { ManualPaymentForm } from "@/components/checkout/manual-payment-form";
+import { apiGet } from "@/lib/api/client";
 import { normalizeToE164Phone } from "@/lib/phone";
-import type { CheckoutStatusResponse, CheckoutVerifyPaymentResponse } from "@/types/api";
+import type { CheckoutStatusResponse, ManualPaymentCheckoutContext } from "@/types/api";
 
-function LivePaymentContent() {
+function ManualPaymentContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const orderId = searchParams.get("orderId");
-  const referenceFromUrl = searchParams.get("reference");
 
-  const [referenceCode, setReferenceCode] = useState(referenceFromUrl ?? "");
-  const [totalAmount, setTotalAmount] = useState<number | null>(null);
+  const [context, setContext] = useState<ManualPaymentCheckoutContext | null>(null);
   const [status, setStatus] = useState<CheckoutStatusResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [verifying, setVerifying] = useState(false);
-  const [pollMessage, setPollMessage] = useState<string | null>(null);
-  const verifyingRef = useRef(false);
+  const [loading, setLoading] = useState(true);
 
   const getPhone = useCallback((): string | null => {
     const raw = sessionStorage.getItem("guestPhone");
@@ -26,24 +23,36 @@ function LivePaymentContent() {
     return normalizeToE164Phone(raw);
   }, []);
 
-  useEffect(() => {
+  const loadContext = useCallback(async () => {
     if (!orderId) return;
-
-    const storedReference = sessionStorage.getItem(`paymentReference:${orderId}`);
-    if (storedReference) setReferenceCode(storedReference);
-    else if (referenceFromUrl) setReferenceCode(referenceFromUrl);
-
-    const storedTotal = sessionStorage.getItem(`checkoutTotal:${orderId}`);
-    if (storedTotal) setTotalAmount(Number(storedTotal));
-
     const phone = getPhone();
-    if (!phone) return;
+    if (!phone) {
+      setError("Missing guest phone — reserve tickets again from the event page.");
+      setLoading(false);
+      return;
+    }
 
     const q = `?phone=${encodeURIComponent(phone)}`;
-    apiGet<{ status: CheckoutStatusResponse }>(`/api/checkout/${orderId}/status${q}`)
-      .then(({ status: s }) => setStatus(s))
-      .catch(() => {});
-  }, [orderId, referenceFromUrl, getPhone]);
+    try {
+      const [{ context: ctx }, { status: s }] = await Promise.all([
+        apiGet<{ context: ManualPaymentCheckoutContext }>(
+          `/api/checkout/${orderId}/payment-context${q}`,
+        ),
+        apiGet<{ status: CheckoutStatusResponse }>(`/api/checkout/${orderId}/status${q}`),
+      ]);
+      setContext(ctx);
+      setStatus(s);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load payment details");
+    } finally {
+      setLoading(false);
+    }
+  }, [orderId, getPhone]);
+
+  useEffect(() => {
+    void loadContext();
+  }, [loadContext]);
 
   useEffect(() => {
     if (!orderId) return;
@@ -54,102 +63,113 @@ function LivePaymentContent() {
     }
   }, [status, orderId, router, getPhone]);
 
-  const verifyPayment = useCallback(async () => {
-    if (!orderId || verifyingRef.current) return;
-
-    const phone = getPhone();
-    if (!phone) {
-      setError("Missing guest phone — reserve tickets again from the event page.");
-      return;
-    }
-
-    verifyingRef.current = true;
-    setVerifying(true);
-    setError(null);
-
-    try {
-      const { result } = await apiPost<{ result: CheckoutVerifyPaymentResponse }>(
-        `/api/checkout/${orderId}/verify-payment`,
-        { phone },
-      );
-
-      if (result.referenceCode) {
-        setReferenceCode(result.referenceCode);
-        sessionStorage.setItem(`paymentReference:${orderId}`, result.referenceCode);
-      }
-
-      if (result.verified) {
-        router.push(`/orders/${orderId}/confirmation?phone=${encodeURIComponent(phone)}`);
-        return;
-      }
-
-      setPollMessage(
-        "Payment not found yet. Send the exact reference code in your Sham Cash payment note, then wait or tap verify again.",
-      );
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Verification failed");
-    } finally {
-      verifyingRef.current = false;
-      setVerifying(false);
-    }
-  }, [orderId, getPhone, router]);
-
   useEffect(() => {
     if (!orderId || status?.paymentStatus === "completed") return;
+    if (context?.orderStatus !== "payment_pending") return;
+
+    const phone = getPhone();
+    if (!phone) return;
 
     const interval = setInterval(() => {
-      void verifyPayment();
+      const q = `?phone=${encodeURIComponent(phone)}`;
+      apiGet<{ status: CheckoutStatusResponse }>(`/api/checkout/${orderId}/status${q}`)
+        .then(({ status: s }) => setStatus(s))
+        .catch(() => {});
     }, 15_000);
 
     return () => clearInterval(interval);
-  }, [orderId, status?.paymentStatus, verifyPayment]);
+  }, [orderId, status?.paymentStatus, context?.orderStatus, getPhone]);
 
   if (!orderId) {
     return <p className="text-red-600">Missing order ID. Return to checkout and try again.</p>;
   }
 
-  const alreadyPaid =
-    status?.paymentStatus === "completed" || status?.orderStatus === "confirmed";
+  if (loading) {
+    return <p className="mt-6 text-neutral-600">Loading payment details…</p>;
+  }
+
+  if (error && !context) {
+    return <p className="mt-6 text-red-600">{error}</p>;
+  }
+
+  if (!context) {
+    return <p className="mt-6 text-red-600">Unable to load payment details.</p>;
+  }
+
+  const phone = getPhone();
+  const awaitingReview = context.orderStatus === "payment_pending";
+  const wasRejected = status?.paymentStatus === "rejected";
+  const shamCash = context.shamCash;
 
   return (
     <div className="mt-6 space-y-6">
-      <p className="text-sm text-neutral-600">
-        Complete your payment in the Sham Cash app, then return here. We check for your transfer
-        every 15 seconds.
-      </p>
-
       <div className="rounded-lg border bg-neutral-50 p-4">
-        <p className="text-sm font-medium text-neutral-700">Payment reference (put in note)</p>
+        <p className="text-sm font-medium text-neutral-700">Order reference</p>
         <p className="mt-2 font-mono text-2xl font-bold tracking-wide">
-          {referenceCode || "—"}
+          {context.orderReferenceCode || "—"}
         </p>
-        {totalAmount !== null && (
-          <p className="mt-2 text-sm text-neutral-600">
-            Amount: <strong>{totalAmount} SYP</strong>
-          </p>
+        <p className="mt-2 text-sm text-neutral-600">
+          Total:{" "}
+          <strong>
+            {context.totalAmount} {context.currency}
+          </strong>
+        </p>
+      </div>
+
+      <div className="rounded-lg border p-4">
+        <h2 className="font-semibold">Pay with Sham Cash</h2>
+        <p className="mt-2 text-sm text-neutral-700 whitespace-pre-wrap">{shamCash.instructions}</p>
+
+        <dl className="mt-4 space-y-2 text-sm">
+          <div>
+            <dt className="text-neutral-500">Account name</dt>
+            <dd className="font-medium">{shamCash.accountName || "—"}</dd>
+          </div>
+          <div>
+            <dt className="text-neutral-500">Account ID</dt>
+            <dd className="font-mono font-medium">{shamCash.accountId || "—"}</dd>
+          </div>
+        </dl>
+
+        {shamCash.qrImageUrl && (
+          <img
+            src={shamCash.qrImageUrl}
+            alt="Sham Cash QR code"
+            className="mt-4 max-h-48 rounded border"
+          />
         )}
       </div>
 
       <ol className="list-decimal space-y-2 pl-5 text-sm text-neutral-700">
-        <li>Open the Sham Cash app and send the exact amount shown above.</li>
         <li>
-          Paste <strong>{referenceCode || "your reference code"}</strong> into the payment note
-          field.
+          Transfer <strong>{context.totalAmount} {context.currency}</strong> to the Sham Cash
+          account above.
         </li>
-        <li>Return here — verification runs automatically, or tap the button below.</li>
+        <li>
+          Include reference <strong>{context.orderReferenceCode}</strong> in the payment note if
+          possible.
+        </li>
+        <li>Submit your transaction ID and payment screenshot below.</li>
       </ol>
 
-      {pollMessage && <p className="text-sm text-amber-700">{pollMessage}</p>}
+      {awaitingReview && (
+        <div className="rounded border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          Payment proof submitted — awaiting admin review. This page will redirect automatically
+          once approved.
+        </div>
+      )}
+
+      {wasRejected && !awaitingReview && (
+        <div className="rounded border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+          Your previous payment was rejected. Please check the details and submit again.
+        </div>
+      )}
+
       {error && <p className="text-sm text-red-600">{error}</p>}
 
-      <button
-        type="button"
-        onClick={() => void verifyPayment()}
-        disabled={verifying || alreadyPaid || !referenceCode}
-        className="rounded bg-black px-4 py-2 text-white disabled:opacity-50"
-      >
-        {verifying ? "Checking payment…" : "Verify payment now"}
-      </button>
+      {!awaitingReview && phone && (
+        <ManualPaymentForm orderId={orderId} phone={phone} onSubmitted={() => void loadContext()} />
+      )}
     </div>
   );
 }
@@ -159,7 +179,7 @@ export default function LiveCheckoutRedirectPage() {
     <main className="mx-auto max-w-lg p-8">
       <h1 className="text-2xl font-bold">Complete Sham Cash payment</h1>
       <Suspense fallback={<p className="mt-6">Loading…</p>}>
-        <LivePaymentContent />
+        <ManualPaymentContent />
       </Suspense>
     </main>
   );
