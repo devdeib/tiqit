@@ -1,24 +1,16 @@
 "use client";
-
 import { useRouter } from "next/navigation";
 import { createBrowserSupabaseClient } from "@/lib/supabase/browser";
 
 export function OrganizerSignOut() {
   const router = useRouter();
-
   async function handleSignOut() {
-    const supabase = createBrowserSupabaseClient();
-    await supabase.auth.signOut();
+    await createBrowserSupabaseClient().auth.signOut();
     router.push("/login");
     router.refresh();
   }
-
   return (
-    <button
-      onClick={handleSignOut}
-      className="tq-label transition-colors hover:text-white"
-      style={{ background: "none", border: "none", cursor: "pointer", color: "var(--tq-muted)" }}
-    >
+    <button onClick={handleSignOut} style={{ background: "none", border: "none", cursor: "pointer", fontSize: "10px", letterSpacing: ".1em", textTransform: "uppercase", color: "var(--tq-muted)", fontFamily: "inherit" }}>
       Sign out →
     </button>
   );

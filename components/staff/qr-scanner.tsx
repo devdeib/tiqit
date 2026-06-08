@@ -129,8 +129,8 @@ export function QrScanner({ onScan, disabled }: Props) {
   }, [readerId, disabled]);
 
   return (
-    <div className="space-y-2">
-      <div className="relative aspect-square w-full max-w-sm overflow-hidden rounded-lg border bg-black">
+    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+      <div style={{ position: "relative", aspectRatio: "1", width: "100%", maxWidth: "384px", overflow: "hidden", borderRadius: "8px", border: "1px solid var(--tq-rule)", background: "#000" }}>
         <div
           id={readerId}
           className="h-full w-full [&_video]:h-full [&_video]:w-full [&_video]:object-cover"

@@ -14,22 +14,30 @@ export function PublicNav() {
       }}
     >
       <div
-        className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4"
+        style={{
+          maxWidth: "960px",
+          margin: "0 auto",
+          padding: "14px 24px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}
       >
         <TiqitLogo size="md" href="/" />
-        <nav className="flex items-center gap-6">
+        <nav style={{ display: "flex", alignItems: "center", gap: "20px" }}>
           <Link
             href="/"
-            className="text-sm font-medium transition-colors hover:text-white"
-            style={{ color: "var(--tq-muted)" }}
+            style={{
+              fontSize: "13px",
+              fontWeight: 500,
+              color: "var(--tq-muted)",
+              textDecoration: "none",
+              transition: "color .15s",
+            }}
           >
             Events
           </Link>
-          <Link
-            href="/login"
-            className="tq-btn-primary"
-            style={{ padding: "8px 18px", fontSize: "13px" }}
-          >
+          <Link href="/login" className="tq-btn-primary" style={{ padding: "8px 18px", fontSize: "13px" }}>
             Organizer login
           </Link>
         </nav>

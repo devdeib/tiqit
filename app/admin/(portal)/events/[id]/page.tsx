@@ -2,53 +2,44 @@ import Link from "next/link";
 import { EventApprovalActions } from "@/components/admin/event-approval-actions";
 import { getAdminContext } from "@/lib/admin-auth";
 import { getAdminEventDetail } from "@/services/admin/events.service";
+import { EventStatusBadge } from "@/components/organizer/event-status-badge";
 
 export const dynamic = "force-dynamic";
-
 type Props = { params: Promise<{ id: string }> };
 
 export default async function AdminEventDetailPage({ params }: Props) {
   const admin = await getAdminContext();
   if (!admin) return null;
-
   const { id } = await params;
   const event = await getAdminEventDetail(admin, id);
 
   return (
-    <main className="py-8">
-      <Link href="/admin/events/pending" className="text-sm text-neutral-600 underline">
-        ← Pending events
-      </Link>
-      <h1 className="mt-4 text-2xl font-bold">{event.title}</h1>
-      <p className="mt-1 text-sm text-neutral-600">
-        Status: <span className="font-medium">{event.status}</span> · Organizer:{" "}
-        {event.organizerName} ({event.organizerEmail})
-      </p>
+    <main style={{ paddingTop:"40px" }}>
+      <Link href="/admin/events/pending" style={{ fontSize:"10px", letterSpacing:".1em", textTransform:"uppercase", color:"var(--tq-muted)", textDecoration:"none", marginBottom:"24px", display:"inline-block" }}>← Pending events</Link>
+      <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:"16px", marginBottom:"28px" }}>
+        <div>
+          <h1 style={{ fontSize:"28px", fontWeight:900, letterSpacing:"-0.04em", marginBottom:"8px" }}>{event.title}</h1>
+          <div style={{ display:"flex", alignItems:"center", gap:"12px" }}>
+            <EventStatusBadge status={event.status} />
+            <span style={{ fontSize:"13px", color:"var(--tq-muted)" }}>{event.organizerName} · {event.organizerEmail}</span>
+          </div>
+        </div>
+      </div>
 
-      <dl className="mt-6 grid gap-2 text-sm sm:grid-cols-2">
-        <div>
-          <dt className="text-neutral-500">Venue</dt>
-          <dd>{event.venue}</dd>
-        </div>
-        <div>
-          <dt className="text-neutral-500">Event date</dt>
-          <dd>{new Date(event.eventDate).toLocaleString()}</dd>
-        </div>
-        <div>
-          <dt className="text-neutral-500">Sale ends</dt>
-          <dd>{new Date(event.saleEndsAt).toLocaleString()}</dd>
-        </div>
-        <div>
-          <dt className="text-neutral-500">Ticket types</dt>
-          <dd>{event.ticketTypeCount}</dd>
-        </div>
-      </dl>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:"12px", marginBottom:"28px" }}>
+        {[
+          { label:"Venue", value:event.venue },
+          { label:"Event date", value:new Date(event.eventDate).toLocaleString() },
+          { label:"Sale ends", value:new Date(event.saleEndsAt).toLocaleString() },
+        ].map((f) => (
+          <div key={f.label} style={{ background:"var(--tq-surface)", border:"1px solid var(--tq-rule)", borderRadius:"8px", padding:"16px" }}>
+            <p style={{ fontSize:"9px", letterSpacing:".12em", textTransform:"uppercase", color:"var(--tq-muted)", marginBottom:"6px", fontWeight:500 }}>{f.label}</p>
+            <p style={{ fontSize:"14px", color:"var(--tq-off)" }}>{f.value}</p>
+          </div>
+        ))}
+      </div>
 
-      {event.description && (
-        <p className="mt-4 text-sm text-neutral-700 whitespace-pre-wrap">{event.description}</p>
-      )}
-
-      {event.status === "pending_approval" && <EventApprovalActions eventId={event.id} />}
+      <EventApprovalActions eventId={event.id} />
     </main>
   );
 }

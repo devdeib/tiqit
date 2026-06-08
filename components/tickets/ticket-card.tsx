@@ -18,6 +18,7 @@ type Props = {
 };
 
 export function TicketCard({
+  ticketId,
   holderName,
   phone,
   eventTitle,
@@ -30,207 +31,259 @@ export function TicketCard({
   qrValue,
   isVip = false,
 }: Props) {
-  const accentColor = isVip ? "var(--tq-gold)" : "var(--tq-pink)";
-  const tierBg      = isVip ? "rgba(212,168,67,0.15)" : "rgba(139,47,232,0.2)";
-  const tierColor   = isVip ? "var(--tq-gold)" : "var(--tq-purple-lt)";
+  const accent      = isVip ? "#D4A843" : "#F72585";
+  const tierBg      = isVip ? "rgba(212,168,67,.15)"  : "rgba(139,47,232,.2)";
+  const tierColor   = isVip ? "#D4A843"               : "#A855F7";
+  const typeLabel   = isVip ? "VIP Access"            : "General Admission";
+
+  const dateObj = new Date(eventDate);
+  const dateStr = isNaN(dateObj.getTime())
+    ? eventDate
+    : dateObj.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" });
+  const timeStr = isNaN(dateObj.getTime())
+    ? ""
+    : dateObj.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+
+  const seatStr = [section, row, seat].filter(Boolean).join(" · ");
+  const shortId = ticketId.slice(0, 8).toUpperCase();
 
   return (
     <div
-      className="ticket-card overflow-hidden rounded-xl"
+      className="ticket-card"
       style={{
         background: "var(--tq-panel)",
         border: "1px solid var(--tq-rule)",
+        borderRadius: "14px",
+        overflow: "hidden",
         fontFamily: "var(--font-geist-sans), 'Helvetica Neue', sans-serif",
+        boxShadow: isVip
+          ? "0 0 40px rgba(212,168,67,.08)"
+          : "0 0 40px rgba(139,47,232,.06)",
       }}
     >
-      {/* Top accent */}
-      <div style={{ height: "3px", background: accentColor }} />
+      {/* Top accent edge */}
+      <div style={{ height: "3px", background: accent }} />
 
-      <div className="flex flex-col sm:flex-row">
-        {/* ── LEFT: Event info ─────────────────────────── */}
-        <div className="flex-1 p-6">
-          {/* Logo + tier */}
-          <div className="mb-5 flex items-center justify-between">
-            <span
-              style={{
-                fontWeight: 900,
-                fontSize: "16px",
-                letterSpacing: "-0.04em",
-                color: "var(--tq-white)",
-              }}
-            >
-              tiqit
+      <div style={{ display: "flex", flexDirection: "row" }}>
+
+        {/* ── LEFT: Event info ── */}
+        <div style={{ flex: 1, padding: "24px", minWidth: 0 }}>
+
+          {/* Logo + tier badge */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "20px" }}>
+            <span style={{
+              fontWeight: 900,
+              fontSize: "15px",
+              letterSpacing: "-0.04em",
+              lineHeight: 1,
+            }}>
+              <span style={{ color: "#fafafa" }}>tiq</span>
+              <span style={{ color: "#F72585" }}>it</span>
             </span>
-            <span
-              className="tq-badge"
-              style={{ background: tierBg, color: tierColor }}
-            >
-              {isVip ? "VIP Access" : "General"}
+            <span style={{
+              display: "inline-flex",
+              alignItems: "center",
+              padding: "3px 10px",
+              borderRadius: "9999px",
+              fontSize: "10px",
+              fontWeight: 700,
+              letterSpacing: ".08em",
+              textTransform: "uppercase",
+              background: tierBg,
+              color: tierColor,
+            }}>
+              {typeLabel}
             </span>
           </div>
 
-          {/* Event name */}
-          <h2
-            style={{
-              fontWeight: 900,
-              fontSize: "22px",
-              letterSpacing: "-0.04em",
-              lineHeight: 1.1,
-              color: "var(--tq-white)",
-              marginBottom: "4px",
-            }}
-          >
+          {/* Event title */}
+          <h2 style={{
+            fontWeight: 900,
+            fontSize: "22px",
+            letterSpacing: "-0.04em",
+            lineHeight: 1.1,
+            color: isVip ? "#D4A843" : "#fafafa",
+            marginBottom: "6px",
+          }}>
             {eventTitle}
           </h2>
 
-          {/* Date + venue */}
-          <div className="mb-5 space-y-1">
-            <p style={{ fontSize: "13px", color: "var(--tq-off)" }}>{venue}</p>
-            <p style={{ fontSize: "11px", letterSpacing: "0.06em", color: "var(--tq-muted)", textTransform: "uppercase" }}>
-              {new Date(eventDate).toLocaleDateString("en-US", {
-                weekday: "short", month: "short", day: "numeric", year: "numeric",
-              })}
-              {" · "}
-              {new Date(eventDate).toLocaleTimeString("en-US", {
-                hour: "2-digit", minute: "2-digit",
-              })}
+          {/* Venue + datetime */}
+          {venue && (
+            <p style={{ fontSize: "13px", color: "var(--tq-off)", marginBottom: "3px" }}>{venue}</p>
+          )}
+          {dateStr && (
+            <p style={{
+              fontSize: "10px",
+              letterSpacing: ".06em",
+              textTransform: "uppercase",
+              color: "var(--tq-muted)",
+              marginBottom: "18px",
+            }}>
+              {dateStr}{timeStr ? ` · ${timeStr}` : ""}
             </p>
-          </div>
+          )}
 
           {/* Divider */}
-          <div style={{ height: "1px", background: "var(--tq-rule)", marginBottom: "16px" }} />
+          <div style={{ height: "1px", background: "var(--tq-rule)", marginBottom: "18px" }} />
 
-          {/* Holder details grid */}
-          <div className="grid grid-cols-2 gap-4">
+          {/* Holder info grid */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
             <Field label="Ticket holder" value={holderName} />
             <Field label="Phone" value={phone} />
-            <Field label="Ticket type" value={ticketType} accent={accentColor} />
-            {(section || row || seat) && (
-              <Field label="Seat" value={[section, row, seat].filter(Boolean).join(" · ")} />
-            )}
+            <Field label="Ticket type" value={ticketType || typeLabel} accent={accent} />
+            {seatStr
+              ? <Field label="Seat" value={seatStr} />
+              : isVip
+                ? <Field label="Perks" value="Backstage · Lounge" accent={accent} />
+                : null
+            }
           </div>
+
+          {/* Ticket ID */}
+          <p style={{
+            marginTop: "18px",
+            fontSize: "9px",
+            letterSpacing: ".1em",
+            color: "var(--tq-sub)",
+            fontFamily: "var(--font-geist-mono), monospace",
+          }}>
+            TQ-{shortId} · ADMIT ONE
+          </p>
         </div>
 
-        {/* ── Perforation ─────────────────────────────── */}
-        <div
-          className="flex flex-row sm:flex-col items-center justify-center"
-          style={{ position: "relative" }}
-        >
-          {/* Notch top (left on mobile) */}
-          <div
-            style={{
-              width: "20px",
-              height: "20px",
-              borderRadius: "50%",
-              background: "var(--tq-void)",
-              flexShrink: 0,
-            }}
-          />
+        {/* ── Perforation ── */}
+        <div style={{
+          width: "26px",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          flexShrink: 0,
+          position: "relative",
+        }}>
+          {/* Top notch */}
+          <div style={{
+            width: "22px",
+            height: "22px",
+            borderRadius: "50%",
+            background: "var(--tq-void)",
+            flexShrink: 0,
+            marginTop: "-1px",
+          }} />
           {/* Dashed line */}
-          <div
-            style={{
-              flex: 1,
-              borderLeft: "2px dashed var(--tq-sub)",
-              borderTop: "none",
-              margin: "4px 0",
-            }}
-            className="hidden sm:block"
-          />
-          <div
-            style={{
-              flex: 1,
-              borderTop: "2px dashed var(--tq-sub)",
-              borderLeft: "none",
-              margin: "0 4px",
-            }}
-            className="block sm:hidden"
-          />
-          {/* Notch bottom (right on mobile) */}
-          <div
-            style={{
-              width: "20px",
-              height: "20px",
-              borderRadius: "50%",
-              background: "var(--tq-void)",
-              flexShrink: 0,
-            }}
-          />
+          <div style={{
+            flex: 1,
+            borderLeft: "2px dashed var(--tq-sub)",
+          }} />
+          {/* Bottom notch */}
+          <div style={{
+            width: "22px",
+            height: "22px",
+            borderRadius: "50%",
+            background: "var(--tq-void)",
+            flexShrink: 0,
+            marginBottom: "-1px",
+          }} />
         </div>
 
-        {/* ── RIGHT: QR stub ──────────────────────────── */}
-        <div
-          className="flex flex-col items-center justify-center gap-4 p-6"
-          style={{
-            background: "var(--tq-base)",
-            minWidth: "180px",
-          }}
-        >
+        {/* ── RIGHT: QR stub ── */}
+        <div style={{
+          width: "196px",
+          background: "var(--tq-base)",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: "12px",
+          padding: "24px 20px",
+          flexShrink: 0,
+        }}>
           <TicketQr value={qrValue} size={130} vip={isVip} />
-          <p
-            style={{
-              fontSize: "9px",
-              letterSpacing: "0.1em",
-              color: "var(--tq-muted)",
-              textTransform: "uppercase",
-            }}
-          >
+
+          <p style={{
+            fontSize: "9px",
+            letterSpacing: ".1em",
+            textTransform: "uppercase",
+            color: "var(--tq-muted)",
+          }}>
             Scan to verify
           </p>
+
+          {seatStr && (
+            <p style={{
+              fontWeight: 900,
+              fontSize: "16px",
+              letterSpacing: "-0.03em",
+              color: isVip ? "#D4A843" : "#fafafa",
+              textAlign: "center",
+            }}>
+              {seatStr}
+            </p>
+          )}
+
+          {isVip && !seatStr && (
+            <p style={{
+              fontWeight: 900,
+              fontSize: "14px",
+              letterSpacing: "-0.02em",
+              color: "#D4A843",
+              textAlign: "center",
+            }}>
+              VIP — FRONT
+            </p>
+          )}
+
           {/* Barcode strip */}
-          <div
-            style={{
-              width: "130px",
-              height: "24px",
-              borderRadius: "4px",
-              background: "var(--tq-void)",
-              display: "flex",
-              alignItems: "center",
-              gap: "2px",
-              padding: "4px 8px",
-              overflow: "hidden",
-            }}
-          >
-            {Array.from({ length: 32 }).map((_, i) => (
+          <div style={{
+            width: "150px",
+            height: "26px",
+            borderRadius: "4px",
+            background: "var(--tq-void)",
+            display: "flex",
+            alignItems: "center",
+            gap: "2px",
+            padding: "4px 8px",
+            overflow: "hidden",
+          }}>
+            {Array.from({ length: 34 }).map((_, i) => (
               <div
                 key={i}
                 style={{
-                  height: `${8 + (i % 3) * 4}px`,
+                  height: `${8 + (i % 3) * 5}px`,
                   width: i % 3 === 1 ? "2px" : "1px",
-                  background: isVip ? "var(--tq-gold)" : "var(--tq-white)",
-                  opacity: 0.9,
+                  background: isVip ? "#D4A843" : "#fafafa",
+                  opacity: 0.85,
                   flexShrink: 0,
                 }}
               />
             ))}
           </div>
         </div>
+
       </div>
     </div>
   );
 }
 
-function Field({
-  label,
-  value,
-  accent,
-}: {
-  label: string;
-  value: string;
-  accent?: string;
-}) {
+function Field({ label, value, accent }: { label: string; value: string; accent?: string }) {
   return (
     <div>
-      <p style={{ fontSize: "9px", letterSpacing: "0.1em", color: "var(--tq-muted)", textTransform: "uppercase", marginBottom: "3px" }}>
+      <p style={{
+        fontSize: "9px",
+        letterSpacing: ".1em",
+        textTransform: "uppercase",
+        color: "var(--tq-muted)",
+        marginBottom: "3px",
+        fontWeight: 500,
+      }}>
         {label}
       </p>
-      <p
-        style={{
-          fontSize: "13px",
-          fontWeight: 700,
-          letterSpacing: "-0.01em",
-          color: accent ?? "var(--tq-off)",
-        }}
-      >
+      <p style={{
+        fontSize: "13px",
+        fontWeight: 700,
+        letterSpacing: "-0.01em",
+        color: accent ?? "var(--tq-off)",
+      }}>
         {value}
       </p>
     </div>

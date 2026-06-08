@@ -7,18 +7,13 @@ export const dynamic = "force-dynamic";
 export default async function AdminUsersPage() {
   const admin = await getAdminContext();
   if (!admin) return null;
-
   const users = await listAdminUsers(admin);
 
   return (
-    <main className="py-8">
-      <h1 className="text-2xl font-bold">Users</h1>
-      <p className="mt-2 text-sm text-neutral-600">
-        Manage organizer accounts, approval status, and staff roles.
-      </p>
-      <div className="mt-8">
-        <UserManager initialUsers={users} />
-      </div>
+    <main style={{ paddingTop:"40px" }}>
+      <h1 style={{ fontSize:"28px", fontWeight:900, letterSpacing:"-0.04em", marginBottom:"6px" }}>Users</h1>
+      <p style={{ fontSize:"13px", color:"var(--tq-muted)", marginBottom:"32px" }}>Manage organizer accounts, approval status, and staff roles.</p>
+      <UserManager initialUsers={users} />
     </main>
   );
 }

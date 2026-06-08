@@ -39,7 +39,7 @@ export default async function EventPage({ params }: Props) {
                 {event.title}
               </h1>
 
-              <div className="mt-4 space-y-1">
+              <div style={{ marginTop: "16px", display: "flex", flexDirection: "column", gap: "4px" }}>
                 <p className="text-sm" style={{ color: "var(--tq-off)" }}>
                   {event.venue}
                 </p>

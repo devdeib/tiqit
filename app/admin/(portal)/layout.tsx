@@ -5,21 +5,14 @@ import { getAdminContext } from "@/lib/admin-auth";
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminPortalLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default async function AdminPortalLayout({ children }: { children: React.ReactNode }) {
   const ctx = await getAdminContext();
-  if (!ctx) {
-    redirect("/admin/login");
-  }
-
+  if (!ctx) redirect("/admin/login");
   return (
-    <div className="min-h-full bg-neutral-50">
+    <div style={{ minHeight: "100vh", background: "var(--tq-void)" }}>
       <AdminNav email={ctx.profile.email} />
-      <div className="mx-auto max-w-6xl px-6 pb-12">
-        <div className="flex justify-end pt-2">
+      <div style={{ maxWidth: "960px", margin: "0 auto", padding: "0 24px 64px" }}>
+        <div style={{ display: "flex", justifyContent: "flex-end", paddingTop: "12px" }}>
           <AdminSignOut />
         </div>
         {children}

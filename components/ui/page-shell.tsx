@@ -1,18 +1,25 @@
 import { PublicNav } from "./public-nav";
 
-type Props = {
+export function PageShell({
+  children,
+  withNav = true,
+}: {
   children: React.ReactNode;
   withNav?: boolean;
-};
-
-export function PageShell({ children, withNav = true }: Props) {
+}) {
   return (
-    <div className="flex min-h-screen flex-col" style={{ background: "var(--tq-void)" }}>
+    <div style={{ display: "flex", minHeight: "100vh", flexDirection: "column", background: "var(--tq-void)" }}>
       {withNav && <PublicNav />}
-      <main className="flex-1">{children}</main>
+      <main style={{ flex: 1 }}>{children}</main>
       <footer
-        className="mt-auto py-8 text-center"
-        style={{ borderTop: "1px solid var(--tq-rule)", color: "var(--tq-muted)", fontSize: "11px", letterSpacing: "0.1em" }}
+        style={{
+          borderTop: "1px solid var(--tq-rule)",
+          padding: "28px 24px",
+          textAlign: "center",
+          fontSize: "10px",
+          letterSpacing: ".12em",
+          color: "var(--tq-sub)",
+        }}
       >
         TIQIT — GCC EVENT INFRASTRUCTURE — {new Date().getFullYear()}
       </footer>

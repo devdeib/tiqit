@@ -77,7 +77,7 @@ function LoginForm() {
               </div>
             )}
 
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
               <div>
                 <label className="tq-label mb-2 block">Email</label>
                 <input
