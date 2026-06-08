@@ -2,15 +2,16 @@
 
 import { QRCodeSVG } from "qrcode.react";
 
-type TicketQrProps = {
-  value: string;
-  size?: number;
-};
+type Props = { value: string; size?: number; vip?: boolean };
 
-export function TicketQr({ value, size = 200 }: TicketQrProps) {
+export function TicketQr({ value, size = 160, vip = false }: Props) {
   return (
     <div
-      className="ticket-qr inline-flex rounded border border-neutral-200 bg-white p-3 print:border-black print:p-4"
+      className="ticket-qr inline-flex rounded-lg p-3"
+      style={{
+        background: vip ? "var(--tq-gold)" : "#ffffff",
+        border: vip ? "none" : "none",
+      }}
       role="img"
       aria-label="Ticket QR code"
     >
@@ -18,9 +19,9 @@ export function TicketQr({ value, size = 200 }: TicketQrProps) {
         value={value}
         size={size}
         level="M"
-        bgColor="#ffffff"
-        fgColor="#000000"
-        marginSize={4}
+        bgColor={vip ? "#D4A843" : "#ffffff"}
+        fgColor="#08060f"
+        marginSize={2}
         title="Ticket QR code"
       />
     </div>

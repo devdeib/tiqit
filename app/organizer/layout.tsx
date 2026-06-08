@@ -11,15 +11,13 @@ export default async function OrganizerLayout({
   children: React.ReactNode;
 }) {
   const ctx = await getOrganizerContext();
-  if (!ctx) {
-    redirect("/login");
-  }
+  if (!ctx) redirect("/login");
 
   return (
-    <div className="min-h-full">
+    <div className="min-h-screen" style={{ background: "var(--tq-void)" }}>
       <OrganizerNav email={ctx.profile.email} fullName={ctx.profile.full_name} />
-      <div className="mx-auto max-w-5xl px-6 pb-12">
-        <div className="flex justify-end pt-2">
+      <div className="mx-auto max-w-5xl px-6 pb-16">
+        <div className="flex justify-end pt-3">
           <OrganizerSignOut />
         </div>
         {children}

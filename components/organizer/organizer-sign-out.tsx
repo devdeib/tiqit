@@ -6,7 +6,7 @@ import { createBrowserSupabaseClient } from "@/lib/supabase/browser";
 export function OrganizerSignOut() {
   const router = useRouter();
 
-  async function signOut() {
+  async function handleSignOut() {
     const supabase = createBrowserSupabaseClient();
     await supabase.auth.signOut();
     router.push("/login");
@@ -15,11 +15,11 @@ export function OrganizerSignOut() {
 
   return (
     <button
-      type="button"
-      onClick={signOut}
-      className="text-sm text-neutral-600 underline hover:text-neutral-900"
+      onClick={handleSignOut}
+      className="tq-label transition-colors hover:text-white"
+      style={{ background: "none", border: "none", cursor: "pointer", color: "var(--tq-muted)" }}
     >
-      Sign out
+      Sign out →
     </button>
   );
 }

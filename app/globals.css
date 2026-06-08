@@ -1,9 +1,6 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/* ─── tiqit Design System ─────────────────────────────────────── */
 
 @theme inline {
   --color-background: var(--background);
@@ -12,42 +9,196 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+:root {
+  /* Brand palette */
+  --tq-void:        #08060f;
+  --tq-base:        #0d0a1a;
+  --tq-panel:       #100d1c;
+  --tq-surface:     #181426;
+  --tq-rule:        #1e1830;
+  --tq-sub:         #2a2040;
+  --tq-muted:       #5a4f7a;
+  --tq-off:         #c4bdd8;
+  --tq-white:       #fafafa;
+
+  --tq-purple:      #8B2FE8;
+  --tq-purple-lt:   #A855F7;
+  --tq-purple-dim:  #3d1470;
+  --tq-pink:        #F72585;
+  --tq-pink-dim:    #7a1040;
+  --tq-gold:        #D4A843;
+
+  /* Semantic */
+  --background: var(--tq-void);
+  --foreground: var(--tq-white);
 }
+
+/* ─── Base ─────────────────────────────────────────────────────── */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { height: 100%; }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--tq-void);
+  color: var(--tq-white);
+  font-family: var(--font-geist-sans), 'Helvetica Neue', Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100%;
 }
+
+/* ─── Typography ──────────────────────────────────────────────── */
+
+h1, h2, h3, h4, h5, h6 {
+  font-weight: 900;
+  letter-spacing: -0.03em;
+  color: var(--tq-white);
+}
+
+/* ─── Scrollbar ───────────────────────────────────────────────── */
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--tq-base); }
+::-webkit-scrollbar-thumb { background: var(--tq-sub); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--tq-purple); }
+
+/* ─── Focus ───────────────────────────────────────────────────── */
+
+:focus-visible {
+  outline: 2px solid var(--tq-purple);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ─── Selection ───────────────────────────────────────────────── */
+
+::selection {
+  background: var(--tq-purple);
+  color: var(--tq-white);
+}
+
+/* ─── Ticket / Print ──────────────────────────────────────────── */
 
 @media print {
-  :root {
-    --background: #ffffff;
-    --foreground: #000000;
-  }
-
-  body {
-    background: #ffffff;
-    color: #000000;
-  }
-
-  .confirmation-page {
-    margin: 0;
-    padding: 0;
-  }
-
-  .ticket-card {
-    page-break-inside: avoid;
-    break-inside: avoid;
-  }
-
-  .ticket-qr svg {
-    max-width: 100%;
-    height: auto;
-  }
+  body { background: #ffffff; color: #000000; }
+  .no-print { display: none !important; }
+  .ticket-card { page-break-inside: avoid; break-inside: avoid; }
+  .ticket-qr svg { max-width: 100%; height: auto; }
 }
+
+/* ─── Utilities ───────────────────────────────────────────────── */
+
+.tq-panel {
+  background: var(--tq-panel);
+  border: 1px solid var(--tq-rule);
+  border-radius: 12px;
+}
+
+.tq-surface {
+  background: var(--tq-surface);
+  border: 1px solid var(--tq-rule);
+  border-radius: 8px;
+}
+
+.tq-accent-top {
+  border-top: 2px solid var(--tq-pink);
+}
+
+.tq-accent-left {
+  border-left: 3px solid var(--tq-purple);
+}
+
+.tq-label {
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--tq-muted);
+  font-weight: 500;
+}
+
+.tq-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 9999px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.tq-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: var(--tq-purple);
+  color: var(--tq-white);
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: 0.02em;
+  padding: 10px 22px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+}
+.tq-btn-primary:hover { background: var(--tq-purple-lt); }
+.tq-btn-primary:active { transform: scale(0.98); }
+.tq-btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.tq-btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: transparent;
+  color: var(--tq-off);
+  font-weight: 600;
+  font-size: 14px;
+  padding: 10px 22px;
+  border-radius: 8px;
+  border: 1px solid var(--tq-rule);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.tq-btn-ghost:hover { border-color: var(--tq-purple); color: var(--tq-white); }
+
+.tq-input {
+  width: 100%;
+  background: var(--tq-base);
+  border: 1px solid var(--tq-rule);
+  border-radius: 8px;
+  color: var(--tq-white);
+  font-size: 14px;
+  padding: 10px 14px;
+  transition: border-color 0.15s;
+  outline: none;
+}
+.tq-input::placeholder { color: var(--tq-muted); }
+.tq-input:focus { border-color: var(--tq-purple); }
+
+.tq-stat-card {
+  background: var(--tq-panel);
+  border: 1px solid var(--tq-rule);
+  border-radius: 10px;
+  padding: 18px 20px;
+}
+
+/* ─── Animations ──────────────────────────────────────────────── */
+
+@keyframes tq-fade-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.tq-fade-up {
+  animation: tq-fade-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes tq-pulse-dot {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+
+.tq-pulse { animation: tq-pulse-dot 1.8s ease-in-out infinite; }

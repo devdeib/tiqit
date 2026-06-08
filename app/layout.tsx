@@ -13,15 +13,13 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Ticketing Platform",
-  description: "Event ticketing platform",
+  title: "tiqit — GCC Event Ticketing",
+  description: "Sell nights. Scale events. The ticketing infrastructure built for the GCC.",
 };
 
 export default function RootLayout({
   children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+}: Readonly<{ children: React.ReactNode }>) {
   return (
     <html
       lang="en"
