@@ -4,9 +4,13 @@ import { getServerEnv } from "@/lib/env";
 import { createShamCashHttpClient } from "./http-client";
 import {
   extractTransactionsFromResponse,
+  isIncomingTransaction,
   parseShamCashTransaction,
+  receiverAccountMatchesAny,
+  transactionMatchesSubmittedId,
 } from "./transactions-api";
 import type { ShamCashHttpClientDeps } from "./http-client";
+import { logger } from "@/lib/logger";
 
 export type PaymentForMatching = {
   id: string;
@@ -151,4 +155,174 @@ export function amountsMatch(transactionAmount: number, paymentAmount: number): 
 
 export function normalizeCurrency(currency: string): string {
   return currency.trim().toUpperCase();
+}
+
+export type VerificationConditionCheck = {
+  condition: string;
+  paymentValue: unknown;
+  transactionValue: unknown;
+  passed: boolean;
+};
+
+export type VerificationConditionContext = {
+  submittedTransactionId: string;
+  expectedAmount: number;
+  expectedCurrency: string;
+  paymentCreatedAt: string;
+  displayAccountId: string;
+  apiAccountId: string;
+  windowStart: string;
+  windowEnd: string;
+  /** Not validated in submit-payment flow; logged for comparison only. */
+  expectedReferenceCode?: string | null;
+};
+
+export function evaluateVerificationConditions(
+  transaction: ShamCashTransaction,
+  context: VerificationConditionContext,
+): VerificationConditionCheck[] {
+  const incoming = isIncomingTransaction(transaction);
+  const incomingPass = incoming !== false;
+  const receiverCandidates = [context.displayAccountId, context.apiAccountId];
+  const receiverPass = receiverAccountMatchesAny(transaction.receiver_account, receiverCandidates);
+  const amountPass = amountsMatch(transaction.amount, context.expectedAmount);
+  const currencyPass =
+    normalizeCurrency(transaction.currency) === normalizeCurrency(context.expectedCurrency);
+  const occurredMs = new Date(transaction.occurred_at).getTime();
+  const windowStartMs = new Date(context.windowStart).getTime();
+  const windowEndMs = new Date(context.windowEnd).getTime();
+  const datePass =
+    Number.isFinite(occurredMs) &&
+    occurredMs >= windowStartMs &&
+    occurredMs <= windowEndMs;
+  const idPass = transactionMatchesSubmittedId(transaction, context.submittedTransactionId);
+  const notePass =
+    context.expectedReferenceCode === undefined || context.expectedReferenceCode === null
+      ? null
+      : transaction.note === context.expectedReferenceCode;
+
+  const checks: VerificationConditionCheck[] = [
+    {
+      condition: "transaction_id_match",
+      paymentValue: context.submittedTransactionId,
+      transactionValue: {
+        transaction_id: transaction.transaction_id,
+        identifiers: transaction.identifiers,
+      },
+      passed: idPass,
+    },
+    {
+      condition: "direction_incoming",
+      paymentValue: "incoming (unknown direction treated as pass)",
+      transactionValue: { direction: transaction.direction, isIncoming: incoming },
+      passed: incomingPass,
+    },
+    {
+      condition: "receiver_account",
+      paymentValue: receiverCandidates,
+      transactionValue: transaction.receiver_account,
+      passed: receiverPass,
+    },
+    {
+      condition: "amount",
+      paymentValue: context.expectedAmount,
+      transactionValue: transaction.amount,
+      passed: amountPass,
+    },
+    {
+      condition: "currency",
+      paymentValue: normalizeCurrency(context.expectedCurrency),
+      transactionValue: normalizeCurrency(transaction.currency),
+      passed: currencyPass,
+    },
+    {
+      condition: "date_window",
+      paymentValue: { start: context.windowStart, end: context.windowEnd },
+      transactionValue: transaction.occurred_at,
+      passed: datePass,
+    },
+  ];
+
+  if (notePass !== null) {
+    checks.push({
+      condition: "note_reference_match",
+      paymentValue: context.expectedReferenceCode,
+      transactionValue: transaction.note,
+      passed: notePass,
+    });
+  } else {
+    checks.push({
+      condition: "note_reference_match",
+      paymentValue: "not_checked_in_submit_payment_flow",
+      transactionValue: transaction.note,
+      passed: true,
+    });
+  }
+
+  return checks;
+}
+
+export function firstFailingCondition(
+  checks: VerificationConditionCheck[],
+): VerificationConditionCheck | null {
+  return checks.find((check) => !check.passed) ?? null;
+}
+
+export function logVerificationConditionReport(input: {
+  phase: "id_filter" | "validation" | "payment_matcher";
+  submittedTransactionId: string;
+  parsedTransactionCount: number;
+  rawRowCount?: number;
+  idMatchCount: number;
+  transaction: ShamCashTransaction;
+  checks: VerificationConditionCheck[];
+  failingCondition: VerificationConditionCheck | null;
+}): void {
+  logger.info("sham_cash_verification_condition_report", input);
+}
+
+export function logPaymentMatcherConditionReport(
+  payment: PaymentForMatching,
+  transaction: ShamCashTransaction,
+  window: { start: Date; end: Date },
+): void {
+  const checks: VerificationConditionCheck[] = [
+    {
+      condition: "date_window",
+      paymentValue: {
+        start: window.start.toISOString(),
+        end: window.end.toISOString(),
+      },
+      transactionValue: transaction.occurred_at,
+      passed: isWithinDateWindow(transaction.occurred_at, window.start, window.end),
+    },
+    {
+      condition: "note_reference_match",
+      paymentValue: payment.reference_code,
+      transactionValue: transaction.note,
+      passed: transaction.note === payment.reference_code,
+    },
+    {
+      condition: "amount",
+      paymentValue: payment.amount,
+      transactionValue: transaction.amount,
+      passed: amountsMatch(transaction.amount, payment.amount),
+    },
+    {
+      condition: "currency",
+      paymentValue: normalizeCurrency(payment.currency),
+      transactionValue: normalizeCurrency(transaction.currency),
+      passed: normalizeCurrency(transaction.currency) === normalizeCurrency(payment.currency),
+    },
+  ];
+
+  logVerificationConditionReport({
+    phase: "payment_matcher",
+    submittedTransactionId: payment.reference_code,
+    parsedTransactionCount: 1,
+    idMatchCount: 0,
+    transaction,
+    checks,
+    failingCondition: firstFailingCondition(checks),
+  });
 }

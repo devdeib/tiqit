@@ -13,12 +13,14 @@ import { createShamCashHttpClient } from "./http-client";
 import type { ShamCashListTransactionsQuery } from "./api-types";
 import {
   extractTransactionsFromResponse,
+  extractTransactionIdentifiers,
   isIncomingTransaction,
   parseShamCashTransaction,
   receiverAccountMatchesAny,
   summarizeRawTransactionForLog,
   transactionMatchesSubmittedId,
   currencyToCoinId,
+  transactionIdsMatch,
 } from "./transactions-api";
 import {
   logVerificationAccountContext,
@@ -28,10 +30,14 @@ import {
 } from "./transaction-lookup-log";
 import {
   amountsMatch,
+  evaluateVerificationConditions,
+  firstFailingCondition,
   isWithinDateWindow,
+  logVerificationConditionReport,
   normalizeCurrency,
   type ShamCashTransaction,
   type TransactionMatcherDeps,
+  type VerificationConditionContext,
 } from "./transaction-matcher";
 
 export type TransactionVerificationInput = {
@@ -108,9 +114,57 @@ export async function verifySubmittedTransaction(
   }
 
   const window = computeVerificationWindow(input.paymentCreatedAt, deps);
+  const conditionContext = buildConditionContext(
+    input,
+    transactionId,
+    displayAccountId,
+    apiAccountId,
+    window,
+  );
+
+  logVerificationParseGap({
+    submittedTransactionId: transactionId,
+    rawRowCount: lookupDebug?.rawRowCount ?? null,
+    parsedTransactionCount: transactions.length,
+    parseDropCount:
+      lookupDebug?.rawRowCount !== undefined
+        ? Math.max(0, lookupDebug.rawRowCount - transactions.length)
+        : null,
+  });
+
+  const candidateTransactions = selectTransactionsForConditionDebug(
+    transactions,
+    transactionId,
+  );
+
+  for (const transaction of candidateTransactions) {
+    const checks = evaluateVerificationConditions(transaction, conditionContext);
+    logVerificationConditionReport({
+      phase: "id_filter",
+      submittedTransactionId: transactionId,
+      parsedTransactionCount: transactions.length,
+      rawRowCount: lookupDebug?.rawRowCount,
+      idMatchCount: transactionMatchesSubmittedId(transaction, transactionId) ? 1 : 0,
+      transaction,
+      checks,
+      failingCondition: firstFailingCondition(checks),
+    });
+  }
+
   const idMatches = transactions.filter((tx) =>
     transactionMatchesSubmittedId(tx, transactionId),
   );
+
+  logVerificationIdFilterSummary({
+    submittedTransactionId: transactionId,
+    parsedTransactionCount: transactions.length,
+    rawRowCount: lookupDebug?.rawRowCount ?? null,
+    idMatchCount: idMatches.length,
+    candidateTransactionIds: candidateTransactions.map((tx) => ({
+      transaction_id: tx.transaction_id,
+      identifiers: tx.identifiers,
+    })),
+  });
 
   if (idMatches.length === 0) {
     logVerificationLookup({
@@ -137,18 +191,68 @@ export async function verifySubmittedTransaction(
       apiAccountId,
     );
     if (financialMatches.length > 0) {
+      for (const transaction of financialMatches) {
+        const checks = evaluateVerificationConditions(transaction, conditionContext);
+        logVerificationConditionReport({
+          phase: "id_filter",
+          submittedTransactionId: transactionId,
+          parsedTransactionCount: transactions.length,
+          rawRowCount: lookupDebug?.rawRowCount,
+          idMatchCount: 0,
+          transaction,
+          checks,
+          failingCondition: firstFailingCondition(checks),
+        });
+      }
+
+      logger.info("sham_cash_verification_rejection_summary", {
+        submittedTransactionId: transactionId,
+        userFacingReason: TRANSACTION_VERIFICATION_MESSAGES.idMismatch,
+        exactFailingCondition: "transaction_id_match",
+        note: "Payment amount/currency/receiver matched a transaction but submitted ID did not match parsed identifiers",
+      });
+
       return { ok: false, reason: TRANSACTION_VERIFICATION_MESSAGES.idMismatch };
     }
 
     if (transactions.length === 0) {
+      logger.info("sham_cash_verification_rejection_summary", {
+        submittedTransactionId: transactionId,
+        userFacingReason: TRANSACTION_VERIFICATION_MESSAGES.notSyncedYet,
+        exactFailingCondition: "transaction_id_match",
+        note: "API returned rows but none parsed into verification transactions",
+        rawRowCount: lookupDebug?.rawRowCount ?? null,
+      });
       return { ok: false, reason: TRANSACTION_VERIFICATION_MESSAGES.notSyncedYet };
     }
+
+    logger.info("sham_cash_verification_rejection_summary", {
+      submittedTransactionId: transactionId,
+      userFacingReason: TRANSACTION_VERIFICATION_MESSAGES.notFound,
+      exactFailingCondition: "transaction_id_match",
+      parsedTransactionCount: transactions.length,
+      rawRowCount: lookupDebug?.rawRowCount ?? null,
+    });
 
     return { ok: false, reason: TRANSACTION_VERIFICATION_MESSAGES.notFound };
   }
 
   let lastFailure: string | null = null;
+  let lastFailingCondition: ReturnType<typeof firstFailingCondition> = null;
   for (const transaction of idMatches) {
+    const checks = evaluateVerificationConditions(transaction, conditionContext);
+    const failingCondition = firstFailingCondition(checks);
+    logVerificationConditionReport({
+      phase: "validation",
+      submittedTransactionId: transactionId,
+      parsedTransactionCount: transactions.length,
+      rawRowCount: lookupDebug?.rawRowCount,
+      idMatchCount: idMatches.length,
+      transaction,
+      checks,
+      failingCondition,
+    });
+
     const result = validateMatchedTransaction(
       transaction,
       input,
@@ -169,6 +273,18 @@ export async function verifySubmittedTransaction(
       return result;
     }
     lastFailure = result.reason;
+    lastFailingCondition = failingCondition;
+  }
+
+  if (lastFailingCondition) {
+    logger.info("sham_cash_verification_rejection_summary", {
+      submittedTransactionId: transactionId,
+      userFacingReason: lastFailure,
+      exactFailingCondition: lastFailingCondition.condition,
+      paymentValue: lastFailingCondition.paymentValue,
+      transactionValue: lastFailingCondition.transactionValue,
+      passed: lastFailingCondition.passed,
+    });
   }
 
   return { ok: false, reason: lastFailure ?? TRANSACTION_VERIFICATION_MESSAGES.notFound };
@@ -233,6 +349,48 @@ function findFinancialMatches(
 
 function logVerificationLookup(context: Record<string, unknown>): void {
   logger.info("sham_cash_verification_lookup", context);
+}
+
+function buildConditionContext(
+  input: TransactionVerificationInput,
+  submittedTransactionId: string,
+  displayAccountId: string,
+  apiAccountId: string,
+  window: { start: Date; end: Date },
+): VerificationConditionContext {
+  return {
+    submittedTransactionId,
+    expectedAmount: input.expectedAmount,
+    expectedCurrency: input.expectedCurrency,
+    paymentCreatedAt: input.paymentCreatedAt,
+    displayAccountId,
+    apiAccountId,
+    windowStart: window.start.toISOString(),
+    windowEnd: window.end.toISOString(),
+    expectedReferenceCode: null,
+  };
+}
+
+function selectTransactionsForConditionDebug(
+  transactions: ShamCashTransaction[],
+  submittedTransactionId: string,
+): ShamCashTransaction[] {
+  const matches = transactions.filter(
+    (tx) =>
+      transactionMatchesSubmittedId(tx, submittedTransactionId) ||
+      tx.transaction_id === submittedTransactionId ||
+      tx.identifiers.includes(submittedTransactionId),
+  );
+  if (matches.length > 0) return matches;
+  return transactions.slice(0, 3);
+}
+
+function logVerificationParseGap(context: Record<string, unknown>): void {
+  logger.info("sham_cash_verification_parse_gap", context);
+}
+
+function logVerificationIdFilterSummary(context: Record<string, unknown>): void {
+  logger.info("sham_cash_verification_id_filter_summary", context);
 }
 
 function mapShamCashErrorToUserMessage(error: unknown): string {
@@ -339,6 +497,7 @@ async function fetchTransactionsForVerification(
       displayAccountId,
       apiAccountId,
       label,
+      transactionId,
     );
     rawRowCount += rawRows.length;
 
@@ -385,6 +544,7 @@ async function loadParsedTransactions(
   displayAccountId: string,
   apiAccountId: string,
   queryLabel: string,
+  submittedTransactionId: string,
 ): Promise<{
   parsed: ShamCashTransaction[];
   rawRows: Record<string, unknown>[];
@@ -399,7 +559,20 @@ async function loadParsedTransactions(
     const transaction = parseShamCashTransaction(row, {
       accountId: apiAccountId || displayAccountId,
     });
-    if (transaction) parsed.push(transaction);
+    if (transaction) {
+      parsed.push(transaction);
+      continue;
+    }
+
+    const rawIds = extractTransactionIdentifiers(row);
+    if (rawIds.some((id) => transactionIdsMatch(id, submittedTransactionId))) {
+      logger.warn("sham_cash_verification_parse_dropped_submitted_tx", {
+        queryLabel,
+        submittedTransactionId,
+        rawIdentifiers: rawIds,
+        rawFields: summarizeRawTransactionForLog(row),
+      });
+    }
   }
 
   return { parsed, rawRows, responseData };

@@ -178,27 +178,27 @@ function parseDirection(raw: Record<string, unknown>): ShamCashTransaction["dire
 
 export function parseShamCashTransaction(
   raw: Record<string, unknown>,
-  options?: { accountId?: string },
+  options?: { accountId?: string; defaultCurrency?: string },
 ): ShamCashTransaction | null {
-  const identifiers = extractTransactionIdentifiers(raw);
   const transactionId = readTransactionId(raw);
   const amount = readNumber(raw.amount) ?? readNumber(raw.value);
-  const currency = readCurrency(raw);
   const occurredAt =
     readString(raw.occurred_at) ??
     readString(raw.created_at) ??
     readString(raw.timestamp) ??
     readString(raw.date);
 
-  if (!transactionId || amount === undefined || !currency || !occurredAt) {
+  if (!transactionId || amount === undefined || !occurredAt) {
     return null;
   }
 
+  const currency = readCurrency(raw) ?? options?.defaultCurrency ?? "SYP";
+  const identifiers = [...new Set([transactionId, ...extractTransactionIdentifiers(raw)])];
   const direction = parseDirection(raw);
 
   return {
     transaction_id: transactionId,
-    identifiers: identifiers.length ? identifiers : [transactionId],
+    identifiers,
     amount,
     currency,
     occurred_at: occurredAt,

@@ -5,7 +5,7 @@ import {
   unwrapShamCashEnvelopeData,
 } from "../services/sham-cash/envelope.ts";
 import { ShamCashProviderError } from "../services/sham-cash/errors.ts";
-import { parseShamCashTransaction } from "../services/sham-cash/transactions-api.ts";
+import { parseShamCashTransaction, transactionMatchesSubmittedId } from "../services/sham-cash/transactions-api.ts";
 
 describe("assertShamCashSuccessEnvelope", () => {
   it("throws on error envelope even when HTTP would be 200", () => {
@@ -55,5 +55,40 @@ describe("parseShamCashTransaction", () => {
     assert.equal(parsed?.currency, "SYP");
     assert.equal(parsed?.receiver_account, "acc-123");
     assert.equal(parsed?.direction, "incoming");
+  });
+
+  it("parses live ShamCash response without currency field", () => {
+    const parsed = parseShamCashTransaction({
+      transaction_id: 262081418,
+      amount: 5,
+      occurred_at: "2026-06-08T11:44:43",
+    });
+
+    assert.ok(parsed);
+    assert.equal(parsed.transaction_id, "262081418");
+    assert.deepEqual(parsed.identifiers, ["262081418"]);
+    assert.equal(parsed.amount, 5);
+    assert.equal(parsed.currency, "SYP");
+    assert.equal(parsed.occurred_at, "2026-06-08T11:44:43");
+    assert.equal(transactionMatchesSubmittedId(parsed, "262081418"), true);
+  });
+
+  it("parses full ShamCash transaction field shape", () => {
+    const parsed = parseShamCashTransaction({
+      transaction_id: 262081418,
+      amount: 5,
+      currency: "SYP",
+      occurred_at: "2026-06-08T11:44:43",
+      receiver_name: "tiqit",
+      sender_name: "Guest",
+      sender_address: "+963900000001",
+      note: "TIQIT-ABCD1234",
+    });
+
+    assert.equal(parsed?.transaction_id, "262081418");
+    assert.deepEqual(parsed?.identifiers, ["262081418"]);
+    assert.equal(parsed?.sender_name, "Guest");
+    assert.equal(parsed?.sender_address, "+963900000001");
+    assert.equal(parsed?.note, "TIQIT-ABCD1234");
   });
 });
