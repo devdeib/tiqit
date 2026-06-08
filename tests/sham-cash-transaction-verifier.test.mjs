@@ -25,6 +25,31 @@ function buildTx(overrides = {}) {
 }
 
 describe("verifySubmittedTransaction", () => {
+  it("accepts ShamCash naive occurred_at within payment window", async () => {
+    const result = await verifySubmittedTransaction(
+      {
+        transactionId: "262081418",
+        expectedAmount: 5,
+        expectedCurrency: "SYP",
+        tiqitAccountId: tiqitAccount,
+        paymentCreatedAt: "2026-06-08T08:44:50.000Z",
+      },
+      {
+        listTransactions: async () => [
+          buildTx({
+            transaction_id: "262081418",
+            identifiers: ["262081418"],
+            amount: 5,
+            occurred_at: "2026-06-08T11:44:43",
+          }),
+        ],
+        now: () => new Date("2026-06-08T09:00:00.000Z"),
+      },
+    );
+
+    assert.equal(result.ok, true);
+  });
+
   it("accepts a valid incoming transaction via direct transaction_id lookup", async () => {
     const result = await verifySubmittedTransaction(
       {

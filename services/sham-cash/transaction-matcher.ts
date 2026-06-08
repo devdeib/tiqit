@@ -48,6 +48,117 @@ export type TransactionMatcherDeps = {
 const DEFAULT_CLOCK_SKEW_MS = 5 * 60 * 1000;
 const DEFAULT_VERIFICATION_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
+/** Sham Cash API returns Syria local time without a zone suffix (UTC+3). */
+const SHAM_CASH_LOCAL_UTC_OFFSET_MINUTES = 180;
+
+const NAIVE_DATETIME_RE =
+  /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?)?$/;
+
+function hasExplicitTimezone(value: string): boolean {
+  return /(?:Z|[+-]\d{2}:\d{2})$/i.test(value.trim());
+}
+
+export type VerificationTimestampSource = "payment" | "sham_cash";
+
+export function parseVerificationTimestamp(
+  value: string,
+  source: VerificationTimestampSource = "payment",
+): Date | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  if (hasExplicitTimezone(trimmed)) {
+    const parsed = new Date(trimmed);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  const naive = NAIVE_DATETIME_RE.exec(trimmed);
+  if (naive) {
+    const year = Number(naive[1]);
+    const month = Number(naive[2]) - 1;
+    const day = Number(naive[3]);
+    const hour = Number(naive[4] ?? 0);
+    const minute = Number(naive[5] ?? 0);
+    const second = Number(naive[6] ?? 0);
+    const ms = Number((naive[7] ?? "0").padEnd(3, "0").slice(0, 3));
+    const utcMs = Date.UTC(year, month, day, hour, minute, second, ms);
+
+    if (source === "sham_cash") {
+      return new Date(utcMs - SHAM_CASH_LOCAL_UTC_OFFSET_MINUTES * 60 * 1000);
+    }
+
+    return new Date(utcMs);
+  }
+
+  const fallback = new Date(trimmed);
+  return Number.isNaN(fallback.getTime()) ? null : fallback;
+}
+
+export function normalizeVerificationTimestampIso(
+  value: string,
+  source: VerificationTimestampSource = "payment",
+): string | null {
+  const parsed = parseVerificationTimestamp(value, source);
+  return parsed ? parsed.toISOString() : null;
+}
+
+export function getVerificationWindowLimits(deps: TransactionMatcherDeps = {}): {
+  clockSkewMinutes: number;
+  maxWindowMinutes: number;
+} {
+  return {
+    clockSkewMinutes: (deps.clockSkewMs ?? DEFAULT_CLOCK_SKEW_MS) / 60_000,
+    maxWindowMinutes: (deps.maxVerificationWindowMs ?? DEFAULT_VERIFICATION_WINDOW_MS) / 60_000,
+  };
+}
+
+export function buildPaymentWindowCheckLog(input: {
+  paymentCreatedAt: string;
+  transactionOccurredAt: string;
+  window: { start: Date; end: Date };
+  deps?: TransactionMatcherDeps;
+}): {
+  payment_created_at: string;
+  transaction_occurred_at: string;
+  normalized_payment_time: string | null;
+  normalized_transaction_time: string | null;
+  difference_in_minutes: number | null;
+  window_limit_minutes: number;
+  window_clock_skew_minutes: number;
+  window_start: string;
+  window_end: string;
+  passed: boolean;
+} {
+  const paymentTime = parseVerificationTimestamp(input.paymentCreatedAt, "payment");
+  const transactionTime = parseVerificationTimestamp(input.transactionOccurredAt, "sham_cash");
+  const limits = getVerificationWindowLimits(input.deps);
+  const passed =
+    transactionTime !== null &&
+    isWithinDateWindow(input.transactionOccurredAt, input.window.start, input.window.end);
+
+  return {
+    payment_created_at: input.paymentCreatedAt,
+    transaction_occurred_at: input.transactionOccurredAt,
+    normalized_payment_time: paymentTime?.toISOString() ?? null,
+    normalized_transaction_time: transactionTime?.toISOString() ?? null,
+    difference_in_minutes:
+      paymentTime && transactionTime
+        ? Math.round((transactionTime.getTime() - paymentTime.getTime()) / 60_000)
+        : null,
+    window_limit_minutes: limits.maxWindowMinutes,
+    window_clock_skew_minutes: limits.clockSkewMinutes,
+    window_start: input.window.start.toISOString(),
+    window_end: input.window.end.toISOString(),
+    passed,
+  };
+}
+
+export function logPaymentWindowRejection(
+  context: ReturnType<typeof buildPaymentWindowCheckLog>,
+): void {
+  logger.info("sham_cash_verification_window_check", context);
+}
+
 export async function findPaymentTransaction(
   payment: PaymentForMatching,
   deps: TransactionMatcherDeps = {},
@@ -128,10 +239,18 @@ function computeVerificationWindow(
   createdAt: string,
   deps: TransactionMatcherDeps,
 ): { start: Date; end: Date } {
-  const createdMs = new Date(createdAt).getTime();
+  const created = parseVerificationTimestamp(createdAt, "payment");
+  const createdMs = created?.getTime() ?? Number.NaN;
   const clockSkewMs = deps.clockSkewMs ?? DEFAULT_CLOCK_SKEW_MS;
   const maxWindowMs = deps.maxVerificationWindowMs ?? DEFAULT_VERIFICATION_WINDOW_MS;
   const end = deps.now?.() ?? new Date();
+
+  if (!Number.isFinite(createdMs)) {
+    return {
+      start: new Date(end.getTime() - maxWindowMs),
+      end,
+    };
+  }
 
   return {
     start: new Date(createdMs - clockSkewMs),
@@ -139,13 +258,16 @@ function computeVerificationWindow(
   };
 }
 
+export { computeVerificationWindow };
+
 export function isWithinDateWindow(
   occurredAt: string,
   windowStart: Date,
   windowEnd: Date,
 ): boolean {
-  const occurredMs = new Date(occurredAt).getTime();
-  if (Number.isNaN(occurredMs)) return false;
+  const occurred = parseVerificationTimestamp(occurredAt, "sham_cash");
+  if (!occurred) return false;
+  const occurredMs = occurred.getTime();
   return occurredMs >= windowStart.getTime() && occurredMs <= windowEnd.getTime();
 }
 
@@ -188,13 +310,15 @@ export function evaluateVerificationConditions(
   const amountPass = amountsMatch(transaction.amount, context.expectedAmount);
   const currencyPass =
     normalizeCurrency(transaction.currency) === normalizeCurrency(context.expectedCurrency);
-  const occurredMs = new Date(transaction.occurred_at).getTime();
-  const windowStartMs = new Date(context.windowStart).getTime();
-  const windowEndMs = new Date(context.windowEnd).getTime();
+  const occurred = parseVerificationTimestamp(transaction.occurred_at, "sham_cash");
+  const windowStart = parseVerificationTimestamp(context.windowStart, "payment");
+  const windowEnd = parseVerificationTimestamp(context.windowEnd, "payment");
   const datePass =
-    Number.isFinite(occurredMs) &&
-    occurredMs >= windowStartMs &&
-    occurredMs <= windowEndMs;
+    occurred !== null &&
+    windowStart !== null &&
+    windowEnd !== null &&
+    occurred.getTime() >= windowStart.getTime() &&
+    occurred.getTime() <= windowEnd.getTime();
   const idPass = transactionMatchesSubmittedId(transaction, context.submittedTransactionId);
   const notePass =
     context.expectedReferenceCode === undefined || context.expectedReferenceCode === null

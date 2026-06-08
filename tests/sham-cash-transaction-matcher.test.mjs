@@ -2,8 +2,11 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   amountsMatch,
+  computeVerificationWindow,
   findPaymentTransaction,
   isWithinDateWindow,
+  normalizeVerificationTimestampIso,
+  parseVerificationTimestamp,
 } from "../services/sham-cash/transaction-matcher.ts";
 import {
   extractTransactionIdentifiers,
@@ -174,5 +177,36 @@ describe("isWithinDateWindow", () => {
     const end = new Date("2026-06-04T13:00:00.000Z");
     assert.equal(isWithinDateWindow("2026-06-04T12:30:00.000Z", start, end), true);
     assert.equal(isWithinDateWindow("2026-06-04T11:59:00.000Z", start, end), false);
+  });
+
+  it("treats ShamCash naive occurred_at as Syria local time (UTC+3)", () => {
+    const paymentCreatedAt = "2026-06-08T08:44:50.000Z";
+    const window = computeVerificationWindow(paymentCreatedAt, {
+      clockSkewMs: 5 * 60 * 1000,
+      now: () => new Date("2026-06-08T12:00:00.000Z"),
+    });
+
+    assert.equal(
+      normalizeVerificationTimestampIso("2026-06-08T11:44:43", "sham_cash"),
+      "2026-06-08T08:44:43.000Z",
+    );
+    assert.equal(isWithinDateWindow("2026-06-08T11:44:43", window.start, window.end), true);
+  });
+
+  it("rejects ShamCash naive time when transfer predates payment beyond skew", () => {
+    const paymentCreatedAt = "2026-06-08T12:00:00.000Z";
+    const window = computeVerificationWindow(paymentCreatedAt, {
+      clockSkewMs: 5 * 60 * 1000,
+      now: () => new Date("2026-06-08T13:00:00.000Z"),
+    });
+
+    assert.equal(isWithinDateWindow("2026-06-08T11:44:43", window.start, window.end), false);
+  });
+});
+
+describe("parseVerificationTimestamp", () => {
+  it("parses payment timestamps with explicit UTC zone", () => {
+    const parsed = parseVerificationTimestamp("2026-06-08T08:44:50.000Z", "payment");
+    assert.equal(parsed?.toISOString(), "2026-06-08T08:44:50.000Z");
   });
 });

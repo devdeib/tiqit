@@ -30,11 +30,15 @@ import {
 } from "./transaction-lookup-log";
 import {
   amountsMatch,
+  buildPaymentWindowCheckLog,
+  computeVerificationWindow,
   evaluateVerificationConditions,
   firstFailingCondition,
   isWithinDateWindow,
+  logPaymentWindowRejection,
   logVerificationConditionReport,
   normalizeCurrency,
+  parseVerificationTimestamp,
   type ShamCashTransaction,
   type TransactionMatcherDeps,
   type VerificationConditionContext,
@@ -325,6 +329,13 @@ function validateMatchedTransaction(
   }
 
   if (!isWithinDateWindow(transaction.occurred_at, window.start, window.end)) {
+    logPaymentWindowRejection(
+      buildPaymentWindowCheckLog({
+        paymentCreatedAt: input.paymentCreatedAt,
+        transactionOccurredAt: transaction.occurred_at,
+        window,
+      }),
+    );
     return { ok: false, reason: TRANSACTION_VERIFICATION_MESSAGES.outsideWindow };
   }
 
@@ -579,27 +590,12 @@ async function loadParsedTransactions(
 }
 
 function formatTransactionQueryStart(createdAt: string): string {
-  const created = new Date(createdAt);
-  if (Number.isNaN(created.getTime())) {
+  const created = parseVerificationTimestamp(createdAt, "payment");
+  if (!created) {
     const today = new Date();
     today.setUTCDate(today.getUTCDate() - 7);
     return today.toISOString().slice(0, 10);
   }
   created.setUTCDate(created.getUTCDate() - 7);
   return created.toISOString().slice(0, 10);
-}
-
-function computeVerificationWindow(
-  createdAt: string,
-  deps: TransactionMatcherDeps,
-): { start: Date; end: Date } {
-  const createdMs = new Date(createdAt).getTime();
-  const clockSkewMs = deps.clockSkewMs ?? 5 * 60 * 1000;
-  const maxWindowMs = deps.maxVerificationWindowMs ?? 7 * 24 * 60 * 60 * 1000;
-  const end = deps.now?.() ?? new Date();
-
-  return {
-    start: new Date(createdMs - clockSkewMs),
-    end: new Date(Math.min(end.getTime(), createdMs + maxWindowMs)),
-  };
 }
