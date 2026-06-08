@@ -12,6 +12,11 @@ import { unwrapShamCashEnvelopeData } from "./envelope";
 import { requireShamCashEndpointPath } from "./endpoints";
 import { ShamCashConfigurationError } from "./errors";
 import { shamCashApiRequest } from "./request";
+import {
+  buildTransactionsRequestPathForLog,
+  logShamCashListAccountsResponse,
+  logShamCashListTransactionsResponse,
+} from "./transaction-lookup-log";
 import type { RetryPolicy } from "../payments/retry";
 
 export type ShamCashHttpClientDeps = {
@@ -110,29 +115,41 @@ export class ShamCashHttpClient {
       retryPolicy: this.retryPolicy,
     });
 
+    const data = unwrapShamCashEnvelopeData(result.raw);
+
+    logShamCashListAccountsResponse({
+      requestPath: path,
+      httpStatus: result.httpStatus,
+      envelope: result.raw,
+      data,
+    });
+
     return {
       raw: result.raw,
-      data: unwrapShamCashEnvelopeData(result.raw),
+      data,
+      httpStatus: result.httpStatus,
     };
   }
 
   async listTransactions(
     query: ShamCashListTransactionsQuery,
+    options?: { queryLabel?: string },
   ): Promise<ShamCashTransactionsListResponse> {
     const { apiKey, baseUrl } = this.resolveConfig();
     const path = requireShamCashEndpointPath("LIST_TRANSACTIONS");
+    const queryParams = {
+      account_id: query.accountId,
+      transaction_ids: query.transactionIds,
+      start_at: query.startAt,
+      end_at: query.endAt,
+      coin_id: query.coinId,
+      limit: query.limit,
+    };
 
     const result = await shamCashApiRequest({
       method: "GET",
       path,
-      query: {
-        account_id: query.accountId,
-        transaction_ids: query.transactionIds,
-        start_at: query.startAt,
-        end_at: query.endAt,
-        coin_id: query.coinId,
-        limit: query.limit,
-      },
+      query: queryParams,
       apiToken: apiKey,
       baseUrl,
       fetchImpl: this.fetchImpl,
@@ -140,9 +157,21 @@ export class ShamCashHttpClient {
       retryPolicy: this.retryPolicy,
     });
 
+    const data = unwrapShamCashEnvelopeData(result.raw);
+
+    logShamCashListTransactionsResponse({
+      requestPath: buildTransactionsRequestPathForLog(path, queryParams),
+      accountId: query.accountId,
+      httpStatus: result.httpStatus,
+      envelope: result.raw,
+      data,
+      queryLabel: options?.queryLabel,
+    });
+
     return {
       raw: result.raw,
-      data: unwrapShamCashEnvelopeData(result.raw),
+      data,
+      httpStatus: result.httpStatus,
     };
   }
 }

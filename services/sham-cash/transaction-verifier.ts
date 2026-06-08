@@ -7,7 +7,7 @@ import {
   ShamCashProviderError,
   ShamCashTimeoutError,
 } from "./errors";
-import { resolveShamCashApiAccountId } from "./accounts";
+import { resolveShamCashApiAccountId, listShamCashAccounts } from "./accounts";
 import { resolveShamCashApiBaseUrl, getShamCashApiToken } from "./config";
 import { createShamCashHttpClient } from "./http-client";
 import type { ShamCashListTransactionsQuery } from "./api-types";
@@ -20,6 +20,12 @@ import {
   transactionMatchesSubmittedId,
   currencyToCoinId,
 } from "./transactions-api";
+import {
+  logVerificationAccountContext,
+  logVerificationAccountsComparison,
+  logVerificationTransactionsSummary,
+  responseContainsSubmittedTransactionId,
+} from "./transaction-lookup-log";
 import {
   amountsMatch,
   isWithinDateWindow,
@@ -91,6 +97,7 @@ export async function verifySubmittedTransaction(
         transactionId,
         input.paymentCreatedAt,
         input.expectedCurrency,
+        input.configuredApiAccountId,
         deps.httpClientDeps,
       );
       transactions = fetched.transactions;
@@ -259,6 +266,7 @@ async function fetchTransactionsForVerification(
   transactionId: string,
   paymentCreatedAt: string,
   expectedCurrency: string,
+  configuredApiAccountId: string | undefined,
   httpClientDeps?: TransactionMatcherDeps["httpClientDeps"],
 ): Promise<{ transactions: ShamCashTransaction[]; debug: VerificationLookupDebug }> {
   const client = createShamCashHttpClient(
@@ -268,33 +276,79 @@ async function fetchTransactionsForVerification(
     },
   );
 
+  logVerificationAccountContext({
+    submittedTransactionId: transactionId,
+    displayWalletId: displayAccountId,
+    configuredApiAccountId: configuredApiAccountId?.trim() || null,
+    envApiAccountId: process.env.SHAM_CASH_API_ACCOUNT_ID?.trim() || null,
+    resolvedApiAccountId: apiAccountId,
+  });
+
+  try {
+    const linkedAccounts = await listShamCashAccounts(httpClientDeps);
+    logVerificationAccountsComparison({
+      resolvedApiAccountId: apiAccountId,
+      displayWalletId: displayAccountId,
+      configuredApiAccountId: configuredApiAccountId?.trim() || null,
+      linkedAccounts: linkedAccounts.map((account) => ({
+        id: account.id,
+        label: account.label,
+        status: account.status,
+        wallet_id:
+          typeof account.raw.wallet_id === "string" ? account.raw.wallet_id : null,
+        phone: typeof account.raw.phone === "string" ? account.raw.phone : null,
+      })),
+    });
+  } catch (err) {
+    logger.warn("sham_cash_verification_accounts_check_failed", {
+      resolvedApiAccountId: apiAccountId,
+      error: err instanceof Error ? err.message : "unknown",
+    });
+  }
+
   const coinId = currencyToCoinId(expectedCurrency);
   const startAt = formatTransactionQueryStart(paymentCreatedAt);
 
-  // Prefer recent incoming transactions without transaction_ids filter, then direct lookup.
-  const queries: ShamCashListTransactionsQuery[] = [
-    { accountId: apiAccountId, startAt, coinId, limit: 100 },
-    { accountId: apiAccountId, startAt, limit: 100 },
-    { accountId: apiAccountId, coinId, limit: 100 },
-    { accountId: apiAccountId, limit: 100 },
-    { accountId: apiAccountId, transactionIds: transactionId, coinId, limit: 20 },
-    { accountId: apiAccountId, transactionIds: transactionId, limit: 20 },
+  const queries: Array<{ query: ShamCashListTransactionsQuery; label: string }> = [
+    { query: { accountId: apiAccountId, startAt, coinId, limit: 100 }, label: "recent_date_coin" },
+    { query: { accountId: apiAccountId, startAt, limit: 100 }, label: "recent_date" },
+    { query: { accountId: apiAccountId, coinId, limit: 100 }, label: "recent_coin" },
+    { query: { accountId: apiAccountId, limit: 100 }, label: "unfiltered" },
+    {
+      query: { accountId: apiAccountId, transactionIds: transactionId, coinId, limit: 20 },
+      label: "direct_id_coin",
+    },
+    {
+      query: { accountId: apiAccountId, transactionIds: transactionId, limit: 20 },
+      label: "direct_id",
+    },
   ];
 
   const merged = new Map<string, ShamCashTransaction>();
   const rawSamples: Record<string, unknown>[] = [];
   let rawRowCount = 0;
   let queriesExecuted = 0;
+  let submittedIdSeenInAnyResponse = false;
+  let unfilteredQueryReturnedData = false;
 
-  for (const query of queries) {
+  for (const { query, label } of queries) {
     queriesExecuted += 1;
-    const { parsed, rawRows } = await loadParsedTransactions(
+    const { parsed, rawRows, responseData } = await loadParsedTransactions(
       client,
       query,
       displayAccountId,
       apiAccountId,
+      label,
     );
     rawRowCount += rawRows.length;
+
+    if (responseContainsSubmittedTransactionId(responseData, transactionId)) {
+      submittedIdSeenInAnyResponse = true;
+    }
+
+    if (label === "unfiltered" && rawRows.length > 0) {
+      unfilteredQueryReturnedData = true;
+    }
 
     for (const row of rawRows.slice(0, 3)) {
       if (rawSamples.length < 5) rawSamples.push(summarizeRawTransactionForLog(row));
@@ -310,6 +364,15 @@ async function fetchTransactionsForVerification(
     }
   }
 
+  logVerificationTransactionsSummary({
+    submittedTransactionId: transactionId,
+    resolvedApiAccountId: apiAccountId,
+    queriesExecuted,
+    totalRawRows: rawRowCount,
+    submittedIdSeenInAnyResponse,
+    unfilteredQueryReturnedData,
+  });
+
   return {
     transactions: [...merged.values()],
     debug: { queriesExecuted, rawRowCount, rawSamples },
@@ -321,9 +384,15 @@ async function loadParsedTransactions(
   query: ShamCashListTransactionsQuery,
   displayAccountId: string,
   apiAccountId: string,
-): Promise<{ parsed: ShamCashTransaction[]; rawRows: Record<string, unknown>[] }> {
-  const response = await client.listTransactions(query);
-  const rawRows = extractTransactionsFromResponse(response.data ?? response.raw);
+  queryLabel: string,
+): Promise<{
+  parsed: ShamCashTransaction[];
+  rawRows: Record<string, unknown>[];
+  responseData: unknown;
+}> {
+  const response = await client.listTransactions(query, { queryLabel });
+  const responseData = response.data ?? response.raw;
+  const rawRows = extractTransactionsFromResponse(responseData);
   const parsed: ShamCashTransaction[] = [];
 
   for (const row of rawRows) {
@@ -333,7 +402,7 @@ async function loadParsedTransactions(
     if (transaction) parsed.push(transaction);
   }
 
-  return { parsed, rawRows };
+  return { parsed, rawRows, responseData };
 }
 
 function formatTransactionQueryStart(createdAt: string): string {

@@ -27,11 +27,13 @@ export type ShamCashPaymentStatusResponse = {
 export type ShamCashTransactionsListResponse = {
   raw: Record<string, unknown>;
   data: unknown;
+  httpStatus: number;
 };
 
 export type ShamCashAccountsListResponse = {
   raw: Record<string, unknown>;
   data: unknown;
+  httpStatus: number;
 };
 
 export type ShamCashListTransactionsQuery = {
